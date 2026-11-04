@@ -53,6 +53,7 @@ import { connectionDraftOf } from './mcp/connection.js'
 import { toolsByServer } from './mcp/tools.js'
 import { mergeKnownTools } from './mcp/tools.js'
 import { registerRuntimeRoute } from './mcp/runtime.js'
+import { registerLocaleRoute } from './locale/route.js'
 import { registerRowRoute } from './mcp/rows.js'
 import { registerReconnectRoute } from './mcp/reconnect.js'
 import { registerToolsSyncRoute } from './mcp/toolsSync.js'
@@ -1812,6 +1813,8 @@ export function apply(ctx, config) {
   }
   // Optional injection keeps non-web profiles usable; never fall back to writing tools.
   ctx.inject(['webServer', 'connection'], (inner) => registerRuntimeRoute(inner, readRuntime))
+  // Dictionary transport for the panel: the client bundle ships no translations.
+  ctx.inject(['webServer', 'connection'], (localeCtx) => registerLocaleRoute(localeCtx))
 
   // ── One-time migration ──────────────────────────────────────────────────────────────
   //

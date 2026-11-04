@@ -1,8 +1,4 @@
-/**
- * ru dictionary. Keys are the source Chinese strings (gettext-style msgid).
- * Generated from the panel strings; keep keys byte-identical to the source.
- */
-export const ru = {
+{
   " · 文件不存在": " · файл отсутствует",
   " · 识别 {0} 个{1}": " · найдено серверов: {0}{1}",
   " 是 DSH 自动注入的（跟随系统 PATH，让 ": " подставляется DSH автоматически (следует системному PATH, чтобы ",

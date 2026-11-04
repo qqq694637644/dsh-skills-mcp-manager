@@ -93,7 +93,7 @@ dsh plugin --profile web add dsh-skills-mcp-manager
 ### 桌面端：设置 → 插件 → 安装本地包
 
 从 [Releases](https://github.com/zx2021210538/dsh-skills-mcp-manager/releases) 下载
-`dsh-skills-mcp-manager-0.6.3.tgz`，在 **设置 → 插件 → 安装本地包** 里选中它，然后**重启 DSH**。
+`dsh-skills-mcp-manager-0.6.4.tgz`，在 **设置 → 插件 → 安装本地包** 里选中它，然后**重启 DSH**。
 
 > `desktop` profile 由桌面应用独占，宿主 CLI 的 `dsh plugin --profile desktop` 会被直接拒绝。
 
@@ -102,11 +102,11 @@ dsh plugin --profile web add dsh-skills-mcp-manager
 ```bash
 # 装 GitHub Release 里预构建的包：
 dsh plugin --profile web add \
-  https://github.com/zx2021210538/dsh-skills-mcp-manager/releases/download/v0.6.3/dsh-skills-mcp-manager-0.6.3.tgz
+  https://github.com/zx2021210538/dsh-skills-mcp-manager/releases/download/v0.6.4/dsh-skills-mcp-manager-0.6.4.tgz
 
 # 或者用本机打出来的 tarball：
 npm pack
-dsh plugin --profile web add ./dsh-skills-mcp-manager-0.6.3.tgz
+dsh plugin --profile web add ./dsh-skills-mcp-manager-0.6.4.tgz
 ```
 
 **重启 DSH**，再刷新页面：**设置 → Skills & MCP**。
@@ -258,6 +258,22 @@ cordis.patch.yml                                   声明插件行（本包自�
 - **fail-open**：判不了名字就放行。过滤器自身的 bug 不该表现成「工具凭空消失」。`Reflect.set` 在不可写属性上会返回 `false` 且可能静默失败，所以写入结果是被**验证**的——否则会出现「报告安装成功、实际一个都没过滤」这种最坏情况。
 - 规则**每次注册时实时读取**，所以改完保存即对新注册生效；未配置的服务器与非 MCP 的内置工具一律放行；归属按**最长前缀**判定（`github` 与 `github__enterprise` 并存时不会挂错）。
 
+## 界面语言
+
+面板跟随 DSH 的**全局语言**（设置 → 通用设置 → 语言），插件没有自己的语言开关；切换后
+立即生效，不需要刷新页面。没有显式选择时，DSH 按浏览器的 `navigator.languages` 自动匹配，
+找不到就回退英文——是按浏览器/系统语言，不是按 IP 地区。
+
+目前提供六种：**简体中文**（源语言）、**English**、**Русский**、**繁體中文（台灣）**、
+**日本語**、**한국어**。中文与英文是 DSH 内置语言；其余四种由本插件注册为 language pack，
+只在插件启用时出现在语言列表里。选这四种语言时本插件的面板会本地化，但 DSH 壳层本身只
+内置中英文，其余界面会回退英文。
+
+词典是 `lib/locale/<id>.json`，由 Host 的 `/locale` 路由按需加载，**不进入客户端 bundle**
+（en + ru 曾让 bundle 多 120 KB；现在六种语言的翻译放在包外，客户端只取当前语言与英文回退）。
+面板里的客户端文案已全部覆盖；Host 侧生成的错误消息（OAuth、导入扫描、仓库/更新等）仍
+是中文。新增/修正翻译见 [`CONTRIBUTING-i18n.md`](CONTRIBUTING-i18n.md)。
+
 ## 已知边界
 
 - 面板列出**磁盘上**的技能（其它工具放进去的也在），但只对其中「本插件能定位到的根」执行写操作
@@ -300,6 +316,7 @@ cordis.patch.yml                                   声明插件行（本包自�
 | [`docs/oauth.md`](docs/oauth.md) | 用到 OAuth 保护的 MCP 服务器的人：怎么点授权、安全边界在哪、失败了怎么排查、怎么在本机验证整条链路 |
 | [`docs/oauth-feasibility.md`](docs/oauth-feasibility.md) | 想弄清 OAuth 为什么必须打补丁的人：每条结论的源码出处与实测证据（调研；0.5.6 已实现，见上一条） |
 | [`docs/tools-persistence.md`](docs/tools-persistence.md) | 工具清单为什么不该落盘：实测体积占比、每 5 秒重写的根因、三条可选路线 |
+| [`CONTRIBUTING-i18n.md`](CONTRIBUTING-i18n.md) | 翻译贡献者：词典格式、复数形态顺序、新增语言要改哪几个文件、质量要求 |
 
 ## License
 

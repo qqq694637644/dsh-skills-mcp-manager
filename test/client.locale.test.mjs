@@ -1,62 +1,95 @@
 /**
  * `apply()` 的本地化接线。
  *
- * 这里守的不是语法，而是两个很容易在真实界面上才暴露的契约：
- *   1. `zh` 必须注册一份 identity 词典 —— 内置 zh 的 fallback 是 en，只注册 en
- *      会让中文界面的面板变成英文；
- *   2. `ru` 是语言包，必须 addLanguage 才可能被选中，否则词典永远用不上。
- * `bootPanel` 默认不带 locale；这里显式传入桩，观察 apply 发出的调用。
+ * `installI18n()` 做四件事，这里全部观察/断言：
+ *   1. 绑定 Host 翻译器，并把「当前语言」读取器交给 t()（复数选择要用）；
+ *   2. 注册语言包定义（ru / zh-TW / ja / ko），否则设置里选不到；
+ *   3. 按需从 `/<NS>/locale?lang=` 拉词典（harness 返回真实 JSON），只拉需要的语言；
+ *   4. 用 en 的键生成并注册 zh identity 词典 —— 内置 zh 的 fallback 是 en，没有它
+ *      中文界面的面板就会变成英文。
  */
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { bootPanel, emptyDoc, skipWithoutBundle } from '../scripts/lib/client-harness.mjs'
-import { en } from '../lib/src/i18n/dict.en.js'
-import { ru } from '../lib/src/i18n/dict.ru.js'
 
-test('apply：注册 zh（identity）/ en / ru 词典，并把 ru 加入语言列表后绑定翻译器', { skip: skipWithoutBundle() }, async () => {
+const tick = async (panel, rounds = 24) => {
+  for (let index = 0; index < rounds; index += 1) {
+    await Promise.resolve()
+    panel.runtime.render()
+  }
+}
+
+const registersById = (registrations, id) => registrations.filter((call) => call.id === id).at(-1)?.dict
+
+test('apply：绑定翻译器、注册语言包、按需加载词典并补 zh identity', { skip: skipWithoutBundle() }, async () => {
   const calls = []
-  const disposers = []
+  const dictionaries = new Map()
+  const listeners = new Set()
+  const state = { active: 'en' }
   const locale = {
-    register: (ns, localeId, dict) => {
-      calls.push({ op: 'register', ns, localeId, dict })
-      return () => {}
+    register: (namespace, id, dict) => {
+      calls.push({ op: 'register', namespace, id, dict })
+      dictionaries.set(id, dict)
+      return () => dictionaries.delete(id)
     },
     addLanguage: (definition) => {
       calls.push({ op: 'addLanguage', definition })
       return () => {}
     },
-    bind: (ns) => {
-      calls.push({ op: 'bind', ns })
-      return (key) => key
+    bind: (namespace) => {
+      calls.push({ op: 'bind', namespace })
+      return (key) => {
+        const dict = dictionaries.get(state.active) ?? dictionaries.get('en') ?? {}
+        return dict[key] ?? key
+      }
+    },
+    getLocale: () => ({ active: state.active }),
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
     },
   }
   const panel = await bootPanel(emptyDoc(), {
     locale,
     effect: (fn) => {
       const disposition = fn()
-      disposers.push(disposition)
-      return () => {}
+      return typeof disposition === 'function' ? disposition : () => {}
     },
   })
+  await tick(panel)
 
-  const addLanguage = calls.find((call) => call.op === 'addLanguage')
-  assert.ok(addLanguage, '必须调用 addLanguage 注册 ru 语言包')
-  assert.deepEqual(addLanguage.definition, { id: 'ru', label: 'Русский', fallback: 'en' })
+  // 1) 语言包定义先注册，ru/zh-TW/ja/ko 都必须在列表里。
+  const added = calls.filter((call) => call.op === 'addLanguage').map((call) => call.definition)
+  assert.deepEqual(added, [
+    { id: 'ru', label: 'Русский', fallback: 'en' },
+    { id: 'zh-TW', label: '繁體中文', fallback: 'zh' },
+    { id: 'ja', label: '日本語', fallback: 'en' },
+    { id: 'ko', label: '한국어', fallback: 'en' },
+  ])
 
-  const registrations = calls.filter((call) => call.op === 'register')
-  assert.deepEqual(registrations.map((call) => call.localeId).sort(), ['en', 'ru', 'zh'])
-  for (const registration of registrations) assert.equal(registration.ns, 'dsh-skills-mcp-manager')
+  // 2) 当前语言与回退语言都是 en：去重后只请求一次。
+  const fetchLog = panel.doc.localeFetches ?? []
+  assert.ok(fetchLog.includes('en'), `应请求 en 词典：${JSON.stringify(fetchLog)}`)
+  assert.equal(fetchLog.filter((id) => id === 'en').length, 1, 'en 不应重复请求')
 
-  const zh = registrations.find((call) => call.localeId === 'zh').dict
-  assert.deepEqual(Object.keys(zh).sort(), Object.keys(en).sort(), 'zh 词典的键必须与 en 相同')
-  for (const [key, value] of Object.entries(zh)) assert.equal(value, key, `zh 必须是 identity 映射：${key}`)
-  assert.deepEqual(registrations.find((call) => call.localeId === 'en').dict, en)
-  assert.deepEqual(registrations.find((call) => call.localeId === 'ru').dict, ru)
-
+  // 3) 绑定 + 注册 en + 由 en 生成的 zh identity。
   const bind = calls.find((call) => call.op === 'bind')
-  assert.ok(bind, '必须把 Host 翻译器绑定给 t()')
-  assert.equal(bind.ns, 'dsh-skills-mcp-manager')
+  assert.ok(bind, '必须绑定 Host 翻译器')
+  assert.equal(bind.namespace, 'dsh-skills-mcp-manager')
+  const registrations = () => calls.filter((call) => call.op === 'register')
+  assert.ok(registersById(registrations(), 'en'), '应注册 en 词典')
+  const enDict = registersById(registrations(), 'en')
+  const zhDict = registersById(registrations(), 'zh')
+  assert.ok(zhDict, '应注册 zh identity 词典')
+  assert.deepEqual(Object.keys(zhDict).sort(), Object.keys(enDict).sort(), 'zh 键必须与 en 一致')
+  for (const [key, value] of Object.entries(zhDict)) assert.equal(value, key)
 
-  assert.ok(disposers.length >= 4, '词典/语言注册都应登记为 effect 以便卸载')
+  // 4) 切到日语：订阅回调触发补载，ja 词典到达。
+  state.active = 'ja'
+  for (const listener of listeners) listener()
+  await tick(panel)
+  assert.ok(registersById(registrations(), 'ja'), '切到日语后应加载 ja 词典')
+  assert.ok((panel.doc.localeFetches ?? []).includes('ja'), '应请求 ja 词典')
+
   panel.restore()
 })

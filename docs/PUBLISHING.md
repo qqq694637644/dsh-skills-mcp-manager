@@ -24,14 +24,14 @@
 ```jsonc
 {
   "name": "dsh-skills-mcp-manager",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/zx2021210538/dsh-skills-mcp-manager.git" },
   "homepage": "https://github.com/zx2021210538/dsh-skills-mcp-manager#readme",
   "bugs": { "url": "https://github.com/zx2021210538/dsh-skills-mcp-manager/issues" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" }, "client": { "platform": "web", "immediately": true, "inject": ["…"] } },
   "engines": { "node": ">=20", "dsh": ">=0.2.0-0" },
-  "files": ["dist", "lib/client.js", "cordis.patch.yml", "icon.svg", "locale", "README.md", "FORK.md", "CHANGELOG.md", "LICENSE"],
+  "files": ["dist", "lib/client.js", "lib/locale", "cordis.patch.yml", "icon.svg", "locale", "README.md", "FORK.md", "CHANGELOG.md", "LICENSE"],
   "publishConfig": { "access": "public" }
 }
 ```
@@ -48,13 +48,14 @@ npm ci
 npm run build           # dist/（Host，tsc）+ lib/client.js（Client，esbuild）
 npm test                # 全量单测
 npm run gate            # check:names → build:client → npm test → smoke → 预览基线
-npm pack --dry-run      # 只看清单：应有 dist/**、lib/client.js、cordis.patch.yml、icon.svg、README/LICENSE/CHANGELOG
+npm pack --dry-run      # 只看清单：应有 dist/**、lib/client.js、lib/locale/**、cordis.patch.yml、icon.svg、README/LICENSE/CHANGELOG
 ```
 
 `npm pack --dry-run` 是发版前最后一道自检：
 
 - 出现 `lib/src/**` 或 `test/**` → `files` 写错了；
 - 缺少 `dist/index.js` → 忘了 build（`prepare` 也会补，但别指望它兜住所有情况）；
+- 缺少 `lib/locale/en.json` 等词典 → 面板只能显示中文键，且 Host `/locale` 路由会 404；
 - tarball 名字应是 `dsh-skills-mcp-manager-<版本>.tgz`（无 scope 包没有账号前缀）。
 
 ## 2. 发布 GitHub Release（主通道）
@@ -69,15 +70,15 @@ npm pack --dry-run      # 只看清单：应有 dist/**、lib/client.js、cordis
 npm version minor --no-git-tag-version
 
 # 2) 提交并推到发布线
-git add -A && git commit -m "release: v0.6.3"
+git add -A && git commit -m "release: v0.6.4"
 git push origin main
 
 # 3) 打 tag 并推送
-git tag v0.6.3
-git push origin v0.6.3
+git tag v0.6.4
+git push origin v0.6.4
 ```
 
-然后在 GitHub 上 **Releases → Draft a new release**，选 `v0.6.3`，发布（Publish release）。
+然后在 GitHub 上 **Releases → Draft a new release**，选 `v0.6.4`，发布（Publish release）。
 `publish.yml` 会自动：
 
 1. 校验 `v<package.json version>` == release tag（不一致直接失败，绝不发出号不对的包）；

@@ -1,19 +1,15 @@
-/**
- * en dictionary. Keys are the source Chinese strings (gettext-style msgid).
- * Generated from the panel strings; keep keys byte-identical to the source.
- */
-export const en = {
+{
   " · 文件不存在": " · file missing",
   " · 识别 {0} 个{1}": " · found: {0} servers{1}",
   " 是 DSH 自动注入的（跟随系统 PATH，让 ": " is filled in by DSH automatically (it follows the system PATH so that ",
   " 能被找到）——保持原样即可，删掉会让这个 stdio 服务器启动失败。": " can be found) — leave as is: if you remove it, this stdio server will not start.",
   "(无描述)": "(no description)",
-  "Authorization=Bearer sk-xxxxxxx\n多个请求头一行一个，用等号连接（与 Host 的解析一致）": "Authorization=Bearer sk-xxxxxxx\\nOne header per line, joined with an equals sign (parsed like the Host)",
+  "Authorization=Bearer sk-xxxxxxx\n多个请求头一行一个，用等号连接（与 Host 的解析一致）": "Authorization=Bearer sk-xxxxxxx\nOne header per line, joined with an equals sign (parsed like the Host)",
   "DSH 自动注入 · 跟随系统 PATH，让 npx/node 能被找到": "DSH fills this in automatically · follows the system PATH so that npx/node are found",
   "Loader 诊断：共 {0} 行，其中 mcp 相关 {1} 行": "Loader diagnostics: {0} rows total, {1} of them under mcp",
   "Skills": "Skills",
   "Skills & MCP": "Skills & MCP",
-  "TEST_TOKEN=sk-xxxxxxx\n多个变量一行一个，例如：\nAPI_KEY=sk-abc\nREGION=cn": "TEST_TOKEN=sk-xxxxxxx\\nOne variable per line, for example:\\nAPI_KEY=sk-abc\\nREGION=cn",
+  "TEST_TOKEN=sk-xxxxxxx\n多个变量一行一个，例如：\nAPI_KEY=sk-abc\nREGION=cn": "TEST_TOKEN=sk-xxxxxxx\nOne variable per line, for example:\nAPI_KEY=sk-abc\nREGION=cn",
   "{0} / {1} 个技能未能{2}，可重试": "Could not {2} {0} of {1} skills. You can retry.",
   "{0} {1}{2}{3}": "{0} {1}{2}{3}",
   "{0} 个": "Repositories: {0}",

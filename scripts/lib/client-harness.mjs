@@ -12,11 +12,13 @@
  * runs before the tests), so callers skip instead of failing when it is absent.
  */
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
+/** Repository root: tests read the real shipped locale JSON through the same route shape. */
+const REPO_ROOT = join(here, '..', '..')
 /** Built client bundle, relative to the repository root. */
 export const BUNDLE = join(here, '..', '..', 'lib', 'client.js')
 /** Skip reason for a test that needs the bundle, or `false` when it is present. */
@@ -205,6 +207,18 @@ export async function bootPanel(doc = emptyDoc(), options = {}) {
       commands.push(body)
       doc.importCommands = commands
       return { ok: true, status: 200, json: async () => doc.importResultPayload ?? { ok: true, ...body, files: [], servers: [] } }
+    }
+    if (target.includes('/locale?')) {
+      // Same shape as the Host route: `{ ok, id, dict }`, read from the real shipped JSON.
+      // A test that boots with a `locale` stub exercises the lazy loader through this path.
+      const language = new URL(target, 'http://localhost').searchParams.get('lang') ?? ''
+      try {
+        const dict = JSON.parse(readFileSync(join(REPO_ROOT, 'lib', 'locale', `${language}.json`), 'utf8'))
+        doc.localeFetches = [...(doc.localeFetches ?? []), language]
+        return { ok: true, status: 200, json: async () => ({ ok: true, id: language, dict }) }
+      } catch {
+        return { ok: false, status: 404, json: async () => ({ error: 'unknown-language' }) }
+      }
     }
     if (target.endsWith('/rows')) {
       // Record the command so a test can assert the HTTP path was taken, and echo the Host's

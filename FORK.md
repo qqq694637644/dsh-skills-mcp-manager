@@ -15,7 +15,7 @@
 起已发布 20 多个版本，能力差异见下面第一节的对照表；大到这个程度已经不适合
 再往原仓库提补丁，所以我们把它作为独立插件继续维护。
 
-当前版本 `0.6.3`。测试 700 项（696 通过 / 4 项按平台跳过）。npm 上发布为 `dsh-skills-mcp-manager`，由 GitHub Actions 的 OIDC Trusted Publishing 自动发包。
+当前版本 `0.6.4`。测试 712 项（708 通过 / 4 项按平台跳过）。npm 上发布为 `dsh-skills-mcp-manager`，由 GitHub Actions 的 OIDC Trusted Publishing 自动发包。
 
 ---
 
@@ -35,6 +35,7 @@
 | 工作区视图 | 仅下拉筛选 | ✅ 工作区 + 全局技能视图（0.5.18） |
 | 侧栏入口（主面板页） | ❌ | ✅ `main` + `sidebar.panellist`（0.5.19） |
 | locale（插件管理器里的标题/说明） | ❌（回退到包名） | ✅ `locale/en.json`、`locale/zh.json`（0.5.19） |
+| 面板 UI i18n | ❌（全中文） | ✅ 六种语言：zh（源语言）、en、ru、zh-TW、ja、ko；跟随 DSH 全局语言，词典由 Host `/locale` 路由按需加载、不进客户端 bundle（0.6.4） |
 | 自更新检查 | ❌ | ✅ 只检查不安装（0.5.19）；**0.6.3 起与市场安装源对齐**：读 npm registry 的 latest（市场装的就是这个包），失败回退 GitHub Release tag、再回退 `main` 的 `package.json`；UI 有按钮 + 发布页链接 |
 
 ## 二、模块地图
@@ -158,8 +159,9 @@ profile 由应用插件管理器拥有，不要手改它的 `package.json` / `co
 
 **功能缺口**
 
-- **完整 UI i18n 没做**：面板文案仍是中文（DSH 自身界面也是中文）。`locale/*.json` 只覆盖
-  插件管理器显示的标题与说明。
+- **Host 侧错误文案仍是中文**：OAuth 失败、导入扫描、仓库/更新等消息在 `src/` 生成，那里
+  还拿不到 active locale；面板客户端文案已六语覆盖，但这些对话框在英文/俄文/日文/韩文界面下
+  会中英混排。下一步需要把 locale 传进 Host（返回键或带 locale 的请求）。
 - **侧栏入口没有开关**：上游把它做进 `plugins.bundle.config` 可关；这里是常驻。
 - **面板分区偏多**：Skills 页现在有 8 个区块。合理做法是把「仓库 / 导入 / 市场」收成一个
   「获取技能」二级页签。纯 UI 结构调整，不碰逻辑。
