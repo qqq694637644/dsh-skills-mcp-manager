@@ -138,9 +138,22 @@ test('checkForUpdate：三条链路都读不到时把各自原因带出来', asy
     ]),
   })
   assert.equal(result.ok, false)
+  assert.equal(result.code, 'update-check-failed', 'Host 必须带稳定错误码给客户端翻译')
+  assert.deepEqual(result.params, { npm: 'HTTP 500', github: 'HTTP 404', packageJson: 'HTTP 500' })
   assert.match(String(result.reason), /npm/)
   assert.match(String(result.reason), /GitHub/)
   assert.match(String(result.reason), /package\.json/)
+})
+
+test('checkForUpdate：参数错误也带错误码（旧客户端仍能读中文 reason）', async () => {
+  const noVersion = await checkForUpdate({ currentVersion: '' })
+  assert.equal(noVersion.ok, false)
+  assert.equal(noVersion.code, 'update-check-current-missing')
+  assert.equal(noVersion.reason, '不知道当前版本')
+
+  const noFetch = await checkForUpdate({ currentVersion: '0.6.4', fetchImpl: null })
+  assert.equal(noFetch.code, 'env-fetch-missing')
+  assert.equal(noFetch.reason, '当前环境没有 fetch')
 })
 
 test('checkForUpdate：scoped 包名编码成 %2F，且自定义仓库/分支可用', async () => {

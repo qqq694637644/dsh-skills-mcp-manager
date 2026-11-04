@@ -18,6 +18,8 @@
  * 所以这里只负责**回答「有没有新版」**，把「怎么升」留给它（或用户按 README 重装一次）。
  */
 
+import { errorResponse, renderError } from './errors/codes.js'
+
 /** 本包的 npm 名字（与 package.json 的 name 一致）。 */
 export const PACKAGE_NAME = 'dsh-skills-mcp-manager'
 
@@ -87,14 +89,14 @@ async function getJson(fetchImpl, url, what, headers) {
       signal: typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(TIMEOUT_MS) : undefined,
     })
   } catch (error) {
-    return { ok: false, status: 0, reason: `请求 ${what}失败：${String(error?.message ?? error)}` }
+    return { ok: false, status: 0, issue: 'network error', reason: `请求 ${what}失败：${String(error?.message ?? error)}` }
   }
   const status = Number(response?.status ?? 0)
-  if (response?.ok !== true) return { ok: false, status, reason: `${what} 返回 HTTP ${status}` }
+  if (response?.ok !== true) return { ok: false, status, issue: `HTTP ${status}`, reason: `${what} 返回 HTTP ${status}` }
   try {
     return { ok: true, status, payload: await response.json() }
   } catch {
-    return { ok: false, status, reason: `${what} 返回的不是有效 JSON` }
+    return { ok: false, status, issue: 'invalid JSON', reason: `${what} 返回的不是有效 JSON` }
   }
 }
 
@@ -114,12 +116,12 @@ export async function checkForUpdate({
   fetchImpl = globalThis.fetch,
 } = {}) {
   const current = String(currentVersion ?? '').trim()
-  if (current === '') return { ok: false, reason: '不知道当前版本' }
-  if (typeof fetchImpl !== 'function') return { ok: false, reason: '当前环境没有 fetch' }
+  if (current === '') return errorResponse('update-check-current-missing')
+  if (typeof fetchImpl !== 'function') return errorResponse('env-fetch-missing')
   const name = String(packageName ?? '').trim()
-  if (name === '') return { ok: false, reason: '没有配置包名' }
+  if (name === '') return errorResponse('update-check-package-name-missing')
   const repo = String(repository ?? '').trim()
-  if (repo === '') return { ok: false, reason: '没有配置更新源仓库' }
+  if (repo === '') return errorResponse('update-check-repository-missing')
   const releasesPage = `https://github.com/${repo}/releases`
 
   /** 比较并组装结果；版本号缺失或无法解析时返回 null，让调用方继续回退。 */
@@ -132,6 +134,7 @@ export async function checkForUpdate({
   }
 
   let npmReason = ''
+  let npmIssue = 'no version'
   const npmMeta = await getJson(fetchImpl, `${REGISTRY}/${encodeURIComponent(name)}/latest`, 'npm registry', HEADERS_NPM)
   if (npmMeta.ok === true) {
     const result = finish(npmMeta.payload?.version, 'npm', releasesPage)
@@ -139,9 +142,11 @@ export async function checkForUpdate({
     npmReason = 'npm registry 没有给出有效版本号'
   } else {
     npmReason = String(npmMeta.reason ?? '读不到 npm registry')
+    npmIssue = String(npmMeta.issue ?? 'unknown error')
   }
 
   let githubReason = ''
+  let githubIssue = 'no tag'
   const release = await getJson(fetchImpl, `${GITHUB_API}/repos/${repo}/releases/latest`, 'GitHub 发布版本', HEADERS_GITHUB)
   if (release.ok === true) {
     const tag = String(release.payload?.tag_name ?? '').trim()
@@ -153,9 +158,11 @@ export async function checkForUpdate({
     githubReason = 'GitHub 最新发布没有有效 tag'
   } else {
     githubReason = String(release.reason ?? '读不到 GitHub 发布版本')
+    githubIssue = String(release.issue ?? 'unknown error')
   }
 
   let manifestReason = ''
+  let manifestIssue = 'no version'
   const rawBranch = String(branch ?? '').trim() === '' ? 'main' : String(branch).trim()
   const manifest = await getJson(
     fetchImpl,
@@ -169,10 +176,14 @@ export async function checkForUpdate({
     manifestReason = '仓库里的 package.json 没有有效 version'
   } else {
     manifestReason = String(manifest.reason ?? '读不到仓库里的 package.json')
+    manifestIssue = String(manifest.issue ?? 'unknown error')
   }
 
+  const params = { npm: npmIssue, github: githubIssue, packageJson: manifestIssue }
   return {
     ok: false,
+    code: 'update-check-failed',
+    params,
     reason: `检查不到可用版本：npm（${npmReason}）；GitHub（${githubReason}）；package.json（${manifestReason}）`,
   }
 }

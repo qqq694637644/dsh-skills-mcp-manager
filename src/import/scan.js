@@ -6,13 +6,21 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { adaptImportedEntry, importFilePath, parseJsonLoose } from './sources.js'
 import { IMPORT_SOURCES } from './sources.js'
+import { errorFields } from '../errors/codes.js'
 
 export function scanImportSource(scope, project, sourceId) {
   const source = IMPORT_SOURCES.find((item) => item.id === sourceId)
-  if (source === undefined) return { files: [], servers: [], error: `unknown import source "${sourceId}"` }
+  if (source === undefined) return { files: [], servers: [], ...errorFields('import-source-unknown', { id: sourceId }, 'error') }
   const paths = (scope === 'global' ? source.global : source.project) ?? []
-  if (paths.length === 0) return { files: [], servers: [], error: `${source.label} 目前没有已知的${scope === 'global' ? '用户级' : '项目级'} MCP 配置文件（该工具把 MCP 配置放在别处或仅支持全局）` }
-  if (source.supported === false) return { files: paths.map((path) => ({ path, exists: existsSync(importFilePath(path, project)), servers: [], unsupported: 0, error: '' })), servers: [], error: `${source.label} 目前只有 TOML 配置，暂不支持自动导入` }
+  if (paths.length === 0) {
+    const code = scope === 'global' ? 'import-source-no-user-config' : 'import-source-no-project-config'
+    return { files: [], servers: [], ...errorFields(code, { source: source.label }, 'error') }
+  }
+  if (source.supported === false) return {
+    files: paths.map((path) => ({ path, exists: existsSync(importFilePath(path, project)), servers: [], unsupported: 0, error: '' })),
+    servers: [],
+    ...errorFields('import-source-toml-only', { source: source.label }, 'error'),
+  }
   const files = []
   const servers = []
   const taken = new Set()
