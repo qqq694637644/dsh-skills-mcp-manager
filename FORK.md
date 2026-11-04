@@ -15,7 +15,7 @@
 起已发布 20 多个版本，能力差异见下面第一节的对照表；大到这个程度已经不适合
 再往原仓库提补丁，所以我们把它作为独立插件继续维护。
 
-当前版本 `0.6.4`。测试 712 项（708 通过 / 4 项按平台跳过）。npm 上发布为 `dsh-skills-mcp-manager`，由 GitHub Actions 的 OIDC Trusted Publishing 自动发包。
+当前版本 `0.6.5`。测试 723 项（719 通过 / 4 项按平台跳过）。npm 上发布为 `dsh-skills-mcp-manager`，由 GitHub Actions 的 OIDC Trusted Publishing 自动发包。
 
 ---
 
@@ -159,9 +159,9 @@ profile 由应用插件管理器拥有，不要手改它的 `package.json` / `co
 
 **功能缺口**
 
-- **Host 侧错误文案仍是中文**：OAuth 失败、导入扫描、仓库/更新等消息在 `src/` 生成，那里
-  还拿不到 active locale；面板客户端文案已六语覆盖，但这些对话框在英文/俄文/日文/韩文界面下
-  会中英混排。下一步需要把 locale 传进 Host（返回键或带 locale 的请求）。
+- **Host 侧错误文案已错误码化**：0.6.5 起 Host 返回 `{ code, params, reason }`，客户端按当前
+  locale 映射文案，覆盖 OAuth、导入扫描、仓库/更新、分类/回收站、patch 读写等 130 处响应面；
+  `reason` 保留中文作为旧客户端兜底。详见 `docs/ERROR-CODES.md`。
 - **侧栏入口没有开关**：上游把它做进 `plugins.bundle.config` 可关；这里是常驻。
 - **面板分区偏多**：Skills 页现在有 8 个区块。合理做法是把「仓库 / 导入 / 市场」收成一个
   「获取技能」二级页签。纯 UI 结构调整，不碰逻辑。

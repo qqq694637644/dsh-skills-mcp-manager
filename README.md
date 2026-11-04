@@ -93,7 +93,7 @@ dsh plugin --profile web add dsh-skills-mcp-manager
 ### 桌面端：设置 → 插件 → 安装本地包
 
 从 [Releases](https://github.com/zx2021210538/dsh-skills-mcp-manager/releases) 下载
-`dsh-skills-mcp-manager-0.6.4.tgz`，在 **设置 → 插件 → 安装本地包** 里选中它，然后**重启 DSH**。
+`dsh-skills-mcp-manager-0.6.5.tgz`，在 **设置 → 插件 → 安装本地包** 里选中它，然后**重启 DSH**。
 
 > `desktop` profile 由桌面应用独占，宿主 CLI 的 `dsh plugin --profile desktop` 会被直接拒绝。
 
@@ -102,11 +102,11 @@ dsh plugin --profile web add dsh-skills-mcp-manager
 ```bash
 # 装 GitHub Release 里预构建的包：
 dsh plugin --profile web add \
-  https://github.com/zx2021210538/dsh-skills-mcp-manager/releases/download/v0.6.4/dsh-skills-mcp-manager-0.6.4.tgz
+  https://github.com/zx2021210538/dsh-skills-mcp-manager/releases/download/v0.6.5/dsh-skills-mcp-manager-0.6.5.tgz
 
 # 或者用本机打出来的 tarball：
 npm pack
-dsh plugin --profile web add ./dsh-skills-mcp-manager-0.6.4.tgz
+dsh plugin --profile web add ./dsh-skills-mcp-manager-0.6.5.tgz
 ```
 
 **重启 DSH**，再刷新页面：**设置 → Skills & MCP**。
@@ -271,8 +271,9 @@ cordis.patch.yml                                   声明插件行（本包自�
 
 词典是 `lib/locale/<id>.json`，由 Host 的 `/locale` 路由按需加载，**不进入客户端 bundle**
 （en + ru 曾让 bundle 多 120 KB；现在六种语言的翻译放在包外，客户端只取当前语言与英文回退）。
-面板里的客户端文案已全部覆盖；Host 侧生成的错误消息（OAuth、导入扫描、仓库/更新等）仍
-是中文。新增/修正翻译见 [`CONTRIBUTING-i18n.md`](CONTRIBUTING-i18n.md)。
+面板的静态文案和 Host 生成的错误/结果消息都已六语覆盖：Host 返回稳定错误码 + 参数，客户端按
+当前语言映射文案（0.6.5 起）。新增/修正翻译见 [`CONTRIBUTING-i18n.md`](CONTRIBUTING-i18n.md)，
+错误码列表与协议见 [`docs/ERROR-CODES.md`](docs/ERROR-CODES.md)。
 
 ## 已知边界
 

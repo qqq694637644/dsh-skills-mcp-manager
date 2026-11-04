@@ -50,12 +50,16 @@
 
 ## 客户端接入进度
 
-- ✅ 插件更新失败文案（`hostErrorMessage`）
-- ⬜ MCP 行/重连/技能写读/仓库/分类/回收站/导入扫描/OAuth 的展示位置（约 89 处
-  `result.reason` / `detail` 直接渲染点，逐个换成 `hostErrorMessage`）
+- ✅ 所有面板展示点（插件更新、MCP 行/重连、技能写读、仓库/分类/回收站、导入扫描、OAuth）
+  统一走 `lib/src/host-error.js` 的 `hostErrorMessage(result, fallback)`：优先 code + params，
+  未知 code 回退 `reason`/`detail`。
+- ✅ HTTP 失败响应也会解析 Host 的 JSON 错误体（`failureFromResponse`），不再只显示 `HTTP n`。
+- ✅ 六种词典补齐 108 条错误模板译文（含 en/ru/zh-TW/ja/ko）；`test/locale.coverage.test.mjs`
+  校验每条模板在六种语言里都有译文且占位符一致。
 
 ## 风险与约束
 
-- 模板是 i18n 键：改中文措辞等于改键，必须同步六种词典；测试会挡住漏改。
+- 模板是 i18n 键：改中文措辞等于改键，必须同步六种词典；`test/locale.coverage.test.mjs`
+  会逐条校验覆盖率与占位符。
 - `params` 里不要塞中文句子（否则译文里夹中文）；技术异常信息可以原样放（通常是英文）。
 - `reason` 必须继续生成，兼容尚未更新的旧客户端；新客户端只在没有可用 code 时才读它。

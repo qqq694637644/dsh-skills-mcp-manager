@@ -24,7 +24,7 @@
 ```jsonc
 {
   "name": "dsh-skills-mcp-manager",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/zx2021210538/dsh-skills-mcp-manager.git" },
   "homepage": "https://github.com/zx2021210538/dsh-skills-mcp-manager#readme",
@@ -70,15 +70,15 @@ npm pack --dry-run      # 只看清单：应有 dist/**、lib/client.js、lib/lo
 npm version minor --no-git-tag-version
 
 # 2) 提交并推到发布线
-git add -A && git commit -m "release: v0.6.4"
+git add -A && git commit -m "release: v0.6.5"
 git push origin main
 
 # 3) 打 tag 并推送
-git tag v0.6.4
-git push origin v0.6.4
+git tag v0.6.5
+git push origin v0.6.5
 ```
 
-然后在 GitHub 上 **Releases → Draft a new release**，选 `v0.6.4`，发布（Publish release）。
+然后在 GitHub 上 **Releases → Draft a new release**，选 `v0.6.5`，发布（Publish release）。
 `publish.yml` 会自动：
 
 1. 校验 `v<package.json version>` == release tag（不一致直接失败，绝不发出号不对的包）；

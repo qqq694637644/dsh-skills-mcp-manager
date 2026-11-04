@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.5 — Host 错误码化：六种语言的错误/结果消息
+
+> 0.6.4 的 i18n 只覆盖客户端静态文案；Host 生成的错误/结果仍是中文。这一版把 Host 响应面
+> 全部改成「稳定错误码 + 参数」，客户端按当前语言映射。升级后需重启 DSH 让新 Host 生效。
+
+### 1. Host 协议：code + params，中文 reason 兜底
+
+- 新增 `src/errors/codes.js`：110 个错误码 → 中文模板；模板同时是 i18n 键。
+- Host 失败响应统一为 `{ ok:false, code, params, reason }`；`params` 只放名字/路径/HTTP 状态
+  等技术值，`reason` 继续生成中文，兼容旧客户端。
+- 覆盖 130 处响应面：自更新检查、导入扫描、技能写盘/导入/回收站、GitHub 仓库安装/更新/回滚、
+  MCP 行/重连、分类、OAuth、patch 读写等；`docs/ERROR-CODES.md` 有完整清单与迁移规则。
+
+### 2. 客户端按 locale 渲染 Host 消息
+
+- 新增 `lib/src/host-error.js` 的 `hostErrorMessage()`：优先用 code 查模板 + params，未知 code
+  回退 `reason`/`detail`；所有面板展示点（重连、删除、启停、导入、仓库、市场、更新检查、
+  OAuth 失败文案）都切到它。
+- HTTP 失败响应也会解析 Host 的 JSON 错误体（`failureFromResponse`），不再只显示 `HTTP n`。
+
+### 3. 六语词典：+108 条错误模板
+
+- `lib/locale/{en,ru,zh-TW,ja,ko}.json` 各 453 个键（原 345 + 新增 108 个唯一模板；
+  「当前环境没有 fetch」等既有键不重复添加）。
+- 新增 `test/locale.coverage.test.mjs`：每个错误模板必须在六种语言里都有译文且占位符一致；
+  六种词典键集合必须完全一致。
+- 新代码/新错误消息必须同时补六种词典，CI 会挡住漏翻。
+
+### 验证
+
+- `npm test`：**723 项（719 通过 / 4 项按平台跳过）**；`npm run build`、`npm run check:names`
+  全绿。
+- 错误码表、词典覆盖率、客户端 `hostErrorMessage` 均有单测；Host 侧转换不改变旧 `reason`
+  字符串，回归测试全绿。
+
 ## 0.6.4 — 面板六语 i18n：按需词典 + Intl 复数 + 三种新语言
 
 > 客户端与 Host 都有改动：客户端新增语言加载器，Host 新增 `/locale` 路由。升级后需重启
