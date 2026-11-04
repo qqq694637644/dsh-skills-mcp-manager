@@ -31,6 +31,7 @@ import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { errorFields } from '../../errors/codes.js'
 
 /** OAuth 支持可用/不可用的原因取值。面板直接展示 `reason`。 */
 export const OAUTH_SDK_REASONS = Object.freeze({
@@ -105,11 +106,11 @@ export function resolveSdkEsmEntry(hostUrl) {
   }
   const esmRel = pkg?.exports?.['.']?.import?.default
   if (typeof esmRel !== 'string' || esmRel === '') {
-    return { ok: false, reason: OAUTH_SDK_REASONS.sdkShape, detail: 'exports["."].import.default 缺失' }
+    return { ok: false, reason: OAUTH_SDK_REASONS.sdkShape, ...errorFields('oauth-sdk-export-missing', {}, 'detail') }
   }
   const major = Number(String(pkg.version ?? '').split('.')[0])
   if (!Number.isFinite(major)) {
-    return { ok: false, reason: OAUTH_SDK_REASONS.sdkShape, detail: `版本不可解析：${String(pkg.version)}` }
+    return { ok: false, reason: OAUTH_SDK_REASONS.sdkShape, ...errorFields('oauth-sdk-version-unparsable', { version: String(pkg.version) }, 'detail') }
   }
   if (major < MIN_SDK_MAJOR) {
     return { ok: false, reason: OAUTH_SDK_REASONS.sdkTooOld, detail: String(pkg.version) }

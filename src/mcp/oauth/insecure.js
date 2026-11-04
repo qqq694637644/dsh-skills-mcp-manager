@@ -38,6 +38,8 @@
  * 纯 `fetch` + 字符串处理，所以能在 CI 上完整单测（CI 上没有宿主 node_modules）。
  */
 
+import { errorFields } from '../../errors/codes.js'
+
 /** 哪些 token 端点会被 SDK 拒绝？只按 SDK 的判定复刻，不自己发明规则。 */
 export function isLoopbackHost(hostname) {
   return hostname === 'localhost' || hostname.endsWith('.localhost')
@@ -138,7 +140,7 @@ export async function exchangeInsecureToken({
     return {
       ok: false,
       reason: TOKEN_EXCHANGE_ERRORS.badEndpoint,
-      detail: `该端点不需要明文例外（${url.href}）`,
+      ...errorFields('oauth-insecure-endpoint-unneeded', { url: url.href }, 'detail'),
       text: tokenExchangeErrorText(TOKEN_EXCHANGE_ERRORS.badEndpoint),
     }
   }
@@ -208,7 +210,7 @@ export async function exchangeInsecureToken({
 
   const tokens = validateTokens(body)
   if (tokens === null) {
-    return { ok: false, reason: TOKEN_EXCHANGE_ERRORS.badBody, detail: 'access_token 缺失或不是字符串', text: tokenExchangeErrorText(TOKEN_EXCHANGE_ERRORS.badBody) }
+    return { ok: false, reason: TOKEN_EXCHANGE_ERRORS.badBody, ...errorFields('oauth-access-token-missing', {}, 'detail'), text: tokenExchangeErrorText(TOKEN_EXCHANGE_ERRORS.badBody) }
   }
   return { ok: true, tokens }
 }

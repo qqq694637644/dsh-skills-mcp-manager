@@ -31,6 +31,7 @@
 import { readFile, stat } from 'node:fs/promises'
 import { isMap, isSeq, parseDocument } from 'yaml'
 import { YAML_JS_TAG } from './apply.js'
+import { errorResponse } from '../errors/codes.js'
 
 /** 与 `applyRowOp` 写入的行模块同名。 */
 const MCP_MODULE = '@deepseek-ai/dsh-mcp-client'
@@ -88,7 +89,7 @@ export async function readMcpRowsFromPatch(path) {
     const info = await stat(path)
     const text = await readFile(path, 'utf8')
     const entries = mcpEntriesFromPatchText(text)
-    if (entries === null) return { ok: false, reason: 'patch 解析失败' }
+    if (entries === null) return errorResponse('patch-parse-failed')
     return { ok: true, entries, mtimeMs: info.mtimeMs }
   } catch (error) {
     return { ok: false, reason: String(error?.message ?? error) }

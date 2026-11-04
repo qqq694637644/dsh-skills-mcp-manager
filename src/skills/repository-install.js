@@ -28,6 +28,7 @@ import { readCachedArchive, skillSignature } from './repositories.js'
 import { managerHomePath } from './state.js'
 import { validateSkillName, writableRoots } from './write.js'
 import { isInsideRoot } from './trash.js'
+import { errorFields, errorResponse } from '../errors/codes.js'
 
 /** `$DSH_HOME/dsh-skills-mcp-manager/backups` */
 export function backupRootPath(dshHome) {
@@ -45,10 +46,10 @@ export function resolveDestination({ dshHome = '', agentsHome = '', destination 
   const scope = destination?.scope === 'project' ? 'project' : 'global'
   const destId = destination?.destId === 'agents' ? 'agents' : 'dsh'
   const projectRoot = scope === 'project' ? String(destination?.project ?? '').trim() : ''
-  if (scope === 'project' && projectRoot === '') return { ok: false, reason: '选了项目级就必须指定工作区' }
+  if (scope === 'project' && projectRoot === '') return errorResponse('repo-dest-project-missing')
   const roots = writableRoots({ dshHome, agentsHome, projectRoot })
   const root = roots.find((item) => item.scope === scope && item.id === destId)
-  if (root === undefined) return { ok: false, reason: '这个目标位置不可写' }
+  if (root === undefined) return errorResponse('repo-dest-unwritable')
   return { ok: true, root, project: projectRoot }
 }
 
@@ -99,7 +100,7 @@ export async function writeSkillFiles(target, files) {
   for (const [relativePath, content] of files) {
     const full = join(target, ...relativePath.split('/'))
     // 防御：压缩包里的 `../` 之类不能逃出目标目录
-    if (!resolve(full).startsWith(resolve(target) + sep)) throw new Error(`压缩包里有越界路径：${relativePath}`)
+    if (!resolve(full).startsWith(resolve(target) + sep)) throw new Error(`zip entry escapes target: ${relativePath}`)
     await mkdir(dirname(full), { recursive: true })
     await writeFile(full, content)
   }
@@ -113,30 +114,30 @@ export async function writeSkillFiles(target, files) {
  */
 export async function installSkill({ dshHome, agentsHome = '', repo, skill, destination }) {
   const name = validateSkillName(skill?.name)
-  if (name.ok !== true) return { ok: false, reason: name.reason }
+  if (name.ok !== true) return name
   const resolved = resolveDestination({ dshHome, agentsHome, destination })
   if (resolved.ok !== true) return resolved
 
   const target = join(resolved.root.dir, name.value)
   try {
     await stat(target)
-    return { ok: false, reason: '目标位置已经有同名技能，未覆盖（可先卸载或换个位置）' }
+    return errorResponse('repo-install-target-exists')
   } catch {
     // 不存在 = 可以装
   }
 
   const archive = await readCachedArchive(dshHome, repo.id)
-  if (archive === null) return { ok: false, reason: '仓库缓存不见了，请先「刷新」这个仓库' }
+  if (archive === null) return errorResponse('repo-cache-missing')
 
   const files = skillFilesFromArchive(archive, skill.dir)
-  if (files.size === 0) return { ok: false, reason: '压缩包里找不到这个技能的文件，请刷新仓库' }
+  if (files.size === 0) return errorResponse('repo-skill-files-missing')
 
   await mkdir(target, { recursive: true })
   try {
     await writeSkillFiles(target, files)
   } catch (error) {
     await rm(target, { recursive: true, force: true }).catch(() => {})
-    return { ok: false, reason: `写入失败：${String(error?.message ?? error)}` }
+    return errorResponse('write-failed', { error: String(error?.message ?? error) })
   }
 
   const installed = await installedSignature(target)
@@ -170,9 +171,9 @@ export async function previewInstall({ dshHome, install, repo, skill }) {
   if (onDisk.files.length === 0) return { status: 'missing', additions: [], removals: [], changes: [] }
 
   const archive = await readCachedArchive(dshHome, String(repo?.id ?? install?.repoId ?? ''))
-  if (archive === null) return { status: 'missing', additions: [], removals: [], changes: [], reason: '仓库缓存不见了，请先刷新' }
+  if (archive === null) return { status: 'missing', additions: [], removals: [], changes: [], ...errorFields('repo-cache-missing') }
   const wanted = skillFilesFromArchive(archive, skill?.dir)
-  if (wanted.size === 0) return { status: 'missing', additions: [], removals: [], changes: [], reason: '压缩包里找不到这个技能' }
+  if (wanted.size === 0) return { status: 'missing', additions: [], removals: [], changes: [], ...errorFields('repo-skill-missing') }
 
   const wantedIndex = new Map()
   for (const [path, content] of wanted) {
@@ -230,15 +231,15 @@ export async function latestBackup({ dshHome, install }) {
  */
 export async function updateInstalled({ dshHome, agentsHome = '', install, skill }) {
   const archive = await readCachedArchive(dshHome, String(install?.repoId ?? ''))
-  if (archive === null) return { ok: false, reason: '仓库缓存不见了，请先刷新这个仓库' }
+  if (archive === null) return errorResponse('repo-cache-missing')
   const files = skillFilesFromArchive(archive, skill?.dir)
-  if (files.size === 0) return { ok: false, reason: '压缩包里找不到这个技能' }
+  if (files.size === 0) return errorResponse('repo-skill-missing')
 
   let backup
   try {
     backup = await backupInstalled({ dshHome, install })
   } catch (error) {
-    return { ok: false, reason: `备份失败，已中止更新：${String(error?.message ?? error)}` }
+    return errorResponse('repo-backup-aborted', { error: String(error?.message ?? error) })
   }
 
   const dir = String(install.dir)
@@ -255,7 +256,7 @@ export async function updateInstalled({ dshHome, agentsHome = '', install, skill
     projectRoot: String(install.project ?? ''),
   }).map((root) => root.dir)
   if (!allowedRoots.some((root) => isInsideRoot(root, dir))) {
-    return { ok: false, reason: `安装记录里的路径不在允许的根内，已拒绝删除：${dir}` }
+    return errorResponse('repo-path-outside-root', { path: dir })
   }
   try {
     await rm(dir, { recursive: true, force: true })
@@ -265,7 +266,7 @@ export async function updateInstalled({ dshHome, agentsHome = '', install, skill
     // 写坏了就把备份放回去，别留一个半截的技能目录
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     await cp(backup, dir, { recursive: true }).catch(() => {})
-    return { ok: false, reason: `更新失败，已回滚到更新前：${String(error?.message ?? error)}` }
+    return errorResponse('repo-update-rolled-back', { error: String(error?.message ?? error) })
   }
 
   const installed = await installedSignature(dir)
@@ -280,7 +281,7 @@ export async function updateInstalled({ dshHome, agentsHome = '', install, skill
 /** 恢复最近一次备份（把当前目录换回备份内容）。 */
 export async function rollbackInstalled({ dshHome, agentsHome = '', install }) {
   const backup = await latestBackup({ dshHome, install })
-  if (backup === null) return { ok: false, reason: '这个技能没有可回滚的备份' }
+  if (backup === null) return errorResponse('repo-rollback-missing')
   const dir = String(install.dir)
   /**
    * `install.dir` 来自我们自己的 `state.json`，但那个文件是可以手改的（也是我们要求"可读可
@@ -295,13 +296,13 @@ export async function rollbackInstalled({ dshHome, agentsHome = '', install }) {
     projectRoot: String(install.project ?? ''),
   }).map((root) => root.dir)
   if (!allowedRoots.some((root) => isInsideRoot(root, dir))) {
-    return { ok: false, reason: `安装记录里的路径不在允许的根内，已拒绝删除：${dir}` }
+    return errorResponse('repo-path-outside-root', { path: dir })
   }
   try {
     await rm(dir, { recursive: true, force: true })
     await cp(backup, dir, { recursive: true })
   } catch (error) {
-    return { ok: false, reason: `回滚失败：${String(error?.message ?? error)}` }
+    return errorResponse('repo-rollback-failed', { error: String(error?.message ?? error) })
   }
   const installed = await installedSignature(dir)
   return { ok: true, installedSignature: installed.signature, backup }

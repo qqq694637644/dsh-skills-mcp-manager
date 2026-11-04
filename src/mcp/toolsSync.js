@@ -23,6 +23,7 @@
  *   失败时用户仍可「停用再启用」那张卡片来强制重新上报。
  */
 import { NAME } from '../identity.js'
+import { errorResponse } from '../errors/codes.js'
 
 /** 请求体上限（服务器名列表，几百字节足够）。 */
 const MAX_BODY = 16 * 1024
@@ -55,7 +56,7 @@ export function registerToolsSyncRoute(ctx, { sync }) {
       const contentType = String(req.headers?.['content-type'] ?? '')
       if (!contentType.toLowerCase().includes('application/json')) {
         res.statusCode = 415
-        res.end(JSON.stringify({ ok: false, reason: '需要 application/json' }))
+        res.end(JSON.stringify(errorResponse('request-json-required')))
         return
       }
       // 读请求体：`servers` 是本次规则改动涉及的服务器（只重启它们，别惊动整机）。

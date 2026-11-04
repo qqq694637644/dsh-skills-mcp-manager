@@ -23,6 +23,7 @@ import { join } from 'node:path'
 import { strFromU8, unzipSync } from 'fflate'
 import { assertZipWithinLimit } from './zipLimit.js'
 import { managerHomePath } from './state.js'
+import { errorResponse } from '../errors/codes.js'
 
 /** 仓库名/拥有者的合法字符（GitHub 的规则比这宽，但多收一个非法名字只会让 URL 更难懂）。 */
 const SEGMENT = /^[A-Za-z0-9._-]+$/
@@ -54,7 +55,7 @@ export function repositoryArchivePath(dshHome, id) {
  */
 export function parseRepositoryInput(input) {
   const raw = String(input ?? '').trim()
-  if (raw === '') return { ok: false, reason: '请填写仓库地址' }
+  if (raw === '') return errorResponse('repo-input-empty')
   let text = raw.replace(/^git\+/, '')
   text = text.replace(/^https?:\/\//i, '').replace(/^www\./i, '')
   let ref = ''
@@ -68,11 +69,11 @@ export function parseRepositoryInput(input) {
   text = text.replace(/\/+$/, '').replace(/\.git$/i, '')
   const parts = text.split('/')
   if (parts.length !== 2) {
-    return { ok: false, reason: '只支持 GitHub 仓库地址，形如 https://github.com/owner/repo' }
+    return errorResponse('repo-url-invalid')
   }
   const [owner, name] = parts
   if (!SEGMENT.test(owner) || !SEGMENT.test(name) || name === '' || owner === '') {
-    return { ok: false, reason: '仓库地址里的 owner / repo 不合法' }
+    return errorResponse('repo-owner-invalid')
   }
   return {
     ok: true,
@@ -98,24 +99,24 @@ export function repositoryZipUrl({ owner, name, ref = '' }) {
  * for a pinned branch/tag. Failures carry a reason a user can act on.
  */
 export async function downloadRepositoryArchive({ owner, name, ref = '', fetchImpl = globalThis.fetch }) {
-  if (typeof fetchImpl !== 'function') return { ok: false, reason: '当前环境没有 fetch' }
+  if (typeof fetchImpl !== 'function') return errorResponse('env-fetch-missing')
   const url = repositoryZipUrl({ owner, name, ref })
   let response
   try {
     response = await fetchImpl(url, { redirect: 'follow', headers: { accept: 'application/zip' } })
   } catch (error) {
-    return { ok: false, reason: `下载失败：${String(error?.message ?? error)}` }
+    return errorResponse('repo-download-failed', { error: String(error?.message ?? error) })
   }
   if (response.ok !== true) {
     const status = Number(response.status ?? 0)
-    if (status === 404) return { ok: false, reason: '仓库不存在，或是私有仓库（本插件只读公开仓库）', status }
-    if (status === 403 || status === 429) return { ok: false, reason: 'GitHub 拒绝了这次下载（可能触发限流，稍后再试）', status }
-    return { ok: false, reason: `下载失败：HTTP ${status}`, status }
+    if (status === 404) return { ...errorResponse('repo-not-found'), status }
+    if (status === 403 || status === 429) return { ...errorResponse('repo-rate-limited'), status }
+    return { ...errorResponse('repo-download-http', { status }), status }
   }
   const bytes = new Uint8Array(await response.arrayBuffer())
-  if (bytes.byteLength === 0) return { ok: false, reason: '下载到的压缩包是空的' }
+  if (bytes.byteLength === 0) return errorResponse('repo-archive-empty')
   if (bytes.byteLength > MAX_ARCHIVE_BYTES) {
-    return { ok: false, reason: `仓库太大（${Math.round(bytes.byteLength / 1024 / 1024)} MB），超过 32 MB 上限` }
+    return errorResponse('repo-too-large', { size: Math.round(bytes.byteLength / 1024 / 1024) })
   }
   return { ok: true, bytes, url }
 }
@@ -173,7 +174,7 @@ export function readRepositorySkills(bytes) {
     assertZipWithinLimit(bytes)
     entries = unzipSync(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
   } catch (error) {
-    return { ok: false, reason: `压缩包无法解开：${String(error?.message ?? error)}` }
+    return errorResponse('repo-unzip-failed', { error: String(error?.message ?? error) })
   }
   const paths = Object.keys(entries).filter((path) => !path.endsWith('/'))
   const byPath = new Map(paths.map((path) => [path, entries[path]]))

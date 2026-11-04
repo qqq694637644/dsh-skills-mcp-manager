@@ -20,6 +20,7 @@
 import { cp, lstat, mkdir, readdir, rename, rm } from 'node:fs/promises'
 import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { existsSync } from 'node:fs'
+import { errorResponse } from '../errors/codes.js'
 
 /** `$DSH_HOME/dsh-skills-mcp-manager/trash` */
 export function trashRootPath(dshHome) {
@@ -45,8 +46,8 @@ export function isInsideRoot(root, target) {
 export async function moveSkillToTrash({ dshHome, entry, allowedRoots = null }) {
   const name = String(entry?.name ?? '')
   const path = resolve(String(entry?.path ?? ''))
-  if (name === '' || path === '') return { ok: false, reason: '缺少技能名称或路径' }
-  if (entry?.readonly === true) return { ok: false, reason: '外部 Agent 目录只读，不能删除' }
+  if (name === '' || path === '') return errorResponse('trash-entry-missing')
+  if (entry?.readonly === true) return errorResponse('trash-readonly')
   /**
    * 路径必须落在**允许的写盘根**里。
    *
@@ -55,17 +56,17 @@ export async function moveSkillToTrash({ dshHome, entry, allowedRoots = null }) 
    * 这项校验，实际没有；现在补上，并且**没有给 allowedRoots 时拒绝移动**（fail-closed）。
    */
   if (!Array.isArray(allowedRoots) || allowedRoots.length === 0) {
-    return { ok: false, reason: '缺少允许的写盘根，拒绝移动（内部错误）' }
+    return errorResponse('trash-roots-missing-move')
   }
   const itemCandidate = basename(path).toLowerCase() === 'skill.md' ? dirname(path) : path
   if (!allowedRoots.some((root) => isInsideRoot(String(root), itemCandidate))) {
-    return { ok: false, reason: `路径不在允许的写盘根内，已拒绝移动：${itemCandidate}` }
+    return errorResponse('trash-path-outside-move', { path: itemCandidate })
   }
 
   // 一个技能的 path 是它的 SKILL.md 或 `<name>.md`；要移动的是**承载它的那一项**。
   const isBundle = basename(path).toLowerCase() === 'skill.md'
   const itemPath = isBundle ? dirname(path) : path
-  if (!existsSync(itemPath)) return { ok: false, reason: '该技能已不在磁盘上' }
+  if (!existsSync(itemPath)) return errorResponse('trash-source-gone')
 
   const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const target = join(trashRootPath(dshHome), id)
@@ -73,14 +74,14 @@ export async function moveSkillToTrash({ dshHome, entry, allowedRoots = null }) 
   try {
     await rename(itemPath, target)
   } catch (error) {
-    if (error?.code !== 'EXDEV') return { ok: false, reason: `移动失败：${String(error?.message ?? error)}` }
+    if (error?.code !== 'EXDEV') return errorResponse('trash-move-failed', { error: String(error?.message ?? error) })
     // 跨设备（例如 profile 与技能根不在同一个卷）：复制后再删源，失败就把半成品清掉。
     try {
       await cp(itemPath, target, { recursive: true })
       await rm(itemPath, { recursive: true, force: true })
     } catch (copyError) {
       await rm(target, { recursive: true, force: true }).catch(() => {})
-      return { ok: false, reason: `移动失败：${String(copyError?.message ?? copyError)}` }
+      return errorResponse('trash-move-failed', { error: String(copyError?.message ?? copyError) })
     }
   }
 
@@ -108,7 +109,7 @@ export async function moveSkillToTrash({ dshHome, entry, allowedRoots = null }) 
 export async function restoreFromTrash({ record, allowedRoots = null }) {
   const target = resolve(String(record?.path ?? ''))
   const trashPath = resolve(String(record?.trashPath ?? ''))
-  if (target === '' || trashPath === '') return { ok: false, reason: '回收站记录不完整' }
+  if (target === '' || trashPath === '') return errorResponse('trash-record-incomplete')
   /**
    * 恢复 = 往磁盘写文件，所以和移动/彻底删除一样要校验根。
    *
@@ -116,25 +117,25 @@ export async function restoreFromTrash({ record, allowedRoots = null }) {
    * 在任意路径下建父目录 + 移动文件 —— 与 purge 的边界不对称。
    */
   if (!Array.isArray(allowedRoots) || allowedRoots.length === 0) {
-    return { ok: false, reason: '缺少允许的写盘根，拒绝恢复（内部错误）' }
+    return errorResponse('trash-roots-missing-restore')
   }
   if (!allowedRoots.some((root) => isInsideRoot(String(root), target))) {
-    return { ok: false, reason: `路径不在允许的写盘根内，已拒绝恢复：${target}` }
+    return errorResponse('trash-path-outside-restore', { path: target })
   }
-  if (!existsSync(trashPath)) return { ok: false, reason: '回收站里的文件已经不在了' }
-  if (existsSync(target)) return { ok: false, reason: '原位置已经有同名技能，未覆盖' }
+  if (!existsSync(trashPath)) return errorResponse('trash-file-gone')
+  if (existsSync(target)) return errorResponse('trash-restore-target-exists')
   try {
     await mkdir(dirname(target), { recursive: true })
     await rename(trashPath, target)
     return { ok: true, reason: '' }
   } catch (error) {
-    if (error?.code !== 'EXDEV') return { ok: false, reason: `恢复失败：${String(error?.message ?? error)}` }
+    if (error?.code !== 'EXDEV') return errorResponse('trash-restore-failed', { error: String(error?.message ?? error) })
     try {
       await cp(trashPath, target, { recursive: true })
       await rm(trashPath, { recursive: true, force: true })
       return { ok: true, reason: '' }
     } catch (copyError) {
-      return { ok: false, reason: `恢复失败：${String(copyError?.message ?? copyError)}` }
+      return errorResponse('trash-restore-failed', { error: String(copyError?.message ?? copyError) })
     }
   }
 }
@@ -142,17 +143,17 @@ export async function restoreFromTrash({ record, allowedRoots = null }) {
 /** Permanently delete one trash record's files. */
 export async function purgeFromTrash({ dshHome, record }) {
   const trashPath = resolve(String(record?.trashPath ?? ''))
-  if (trashPath === '') return { ok: false, reason: '回收站记录不完整' }
+  if (trashPath === '') return errorResponse('trash-record-incomplete')
   // 只允许删回收站目录里面的东西：state.json 是用户可以手改的文件，不能拿它当
   // 「删除任意路径」的入口。这是本模块唯一的破坏性操作，边界必须由代码保证。
   if (!isInsideRoot(trashRootPath(dshHome), trashPath)) {
-    return { ok: false, reason: '拒绝删除回收站目录之外的路径' }
+    return errorResponse('trash-purge-outside')
   }
   try {
     await rm(trashPath, { recursive: true, force: true })
     return { ok: true, reason: '' }
   } catch (error) {
-    return { ok: false, reason: `彻底删除失败：${String(error?.message ?? error)}` }
+    return errorResponse('trash-purge-failed', { error: String(error?.message ?? error) })
   }
 }
 

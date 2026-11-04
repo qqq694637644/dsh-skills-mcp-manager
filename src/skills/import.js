@@ -22,6 +22,7 @@ import { assertZipWithinLimit } from './zipLimit.js'
 import { parseFrontmatter } from './discover.js'
 import { resolveDestination, writeSkillFiles } from './repository-install.js'
 import { renderSkillMarkdown, validateSkillName } from './write.js'
+import { errorResponse } from '../errors/codes.js'
 
 /** 导入包上限（解码后的字节数）。 */
 export const MAX_ZIP_BYTES = 8 * 1024 * 1024
@@ -34,14 +35,14 @@ const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 /** base64 → 字节，带长度上限与格式校验。 */
 export function decodeBase64(text) {
   const raw = String(text ?? '').trim()
-  if (raw === '') return { ok: false, reason: '没有收到文件内容' }
+  if (raw === '') return errorResponse('import-base64-empty')
   // 允许 data URL（浏览器 FileReader 的常见输出形态）
   const payload = raw.includes(',') && raw.startsWith('data:') ? raw.slice(raw.indexOf(',') + 1) : raw
-  if (!/^[A-Za-z0-9+/=\s]+$/.test(payload)) return { ok: false, reason: '文件内容不是合法的 base64' }
+  if (!/^[A-Za-z0-9+/=\s]+$/.test(payload)) return errorResponse('import-base64-invalid')
   const bytes = new Uint8Array(Buffer.from(payload, 'base64'))
-  if (bytes.byteLength === 0) return { ok: false, reason: '解出来的文件是空的' }
+  if (bytes.byteLength === 0) return errorResponse('import-base64-empty-bytes')
   if (bytes.byteLength > MAX_ZIP_BYTES) {
-    return { ok: false, reason: `技能包太大（${Math.round(bytes.byteLength / 1024)} KB），上限 ${MAX_ZIP_BYTES / 1024 / 1024} MB` }
+    return errorResponse('import-zip-too-large', { size: Math.round(bytes.byteLength / 1024), max: MAX_ZIP_BYTES / 1024 / 1024 })
   }
   return { ok: true, bytes }
 }
@@ -57,10 +58,7 @@ function pickName({ override = '', markdown = '', fallback = '' }) {
     if (valid.ok !== true) continue
     if (KEBAB.test(trimmed)) return { ok: true, name: trimmed }
   }
-  return {
-    ok: false,
-    reason: '无法确定技能名：请填写一个 kebab-case 名字（小写字母、数字、连字符）',
-  }
+  return errorResponse('import-name-undetermined')
 }
 
 /**
@@ -76,13 +74,13 @@ export function skillFromZip(bytes) {
     assertZipWithinLimit(bytes)
     entries = unzipSync(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes))
   } catch (error) {
-    return { ok: false, reason: `压缩包无法解开：${String(error?.message ?? error)}` }
+    return errorResponse('import-zip-unzip-failed', { error: String(error?.message ?? error) })
   }
   const paths = Object.keys(entries).filter((path) => !path.endsWith('/'))
   const markers = paths.filter((path) => /(^|\/)SKILL\.md$/i.test(path))
-  if (markers.length === 0) return { ok: false, reason: '压缩包里没有 SKILL.md，无法识别为技能' }
+  if (markers.length === 0) return errorResponse('import-zip-no-skill')
   if (markers.length > 1) {
-    return { ok: false, reason: `压缩包里有 ${markers.length} 个 SKILL.md，一次只能导入一个技能` }
+    return errorResponse('import-zip-multiple-skills', { count: markers.length })
   }
 
   const marker = markers[0]
@@ -93,7 +91,7 @@ export function skillFromZip(bytes) {
     if (prefix !== '' && !path.startsWith(prefix)) continue
     files.set(prefix === '' ? path : path.slice(prefix.length), entries[path])
   }
-  if (files.size === 0) return { ok: false, reason: '压缩包里这个技能没有文件' }
+  if (files.size === 0) return errorResponse('import-zip-skill-empty')
 
   const markdown = strFromU8(entries[marker] ?? new Uint8Array())
   return {
@@ -119,7 +117,7 @@ export async function installFilesToDestination({ dshHome, agentsHome = '', dest
   const target = join(resolved.root.dir, picked.name)
   try {
     await stat(target)
-    return { ok: false, reason: '目标位置已经有同名技能，未覆盖' }
+    return errorResponse('import-target-exists')
   } catch {
     // 不存在才能写
   }
@@ -132,7 +130,7 @@ export async function installFilesToDestination({ dshHome, agentsHome = '', dest
   } catch (error) {
     const { rm } = await import('node:fs/promises')
     await rm(target, { recursive: true, force: true }).catch(() => {})
-    return { ok: false, reason: `写入失败：${String(error?.message ?? error)}` }
+    return errorResponse('write-failed', { error: String(error?.message ?? error) })
   }
 
   return {
@@ -164,8 +162,8 @@ export async function importZip({ dshHome, agentsHome = '', base64, destination,
  */
 export async function importMarkdown({ dshHome, agentsHome = '', markdown, destination, name = '' }) {
   const text = String(markdown ?? '')
-  if (text.trim() === '') return { ok: false, reason: 'SKILL.md 内容为空' }
-  if (Buffer.byteLength(text, 'utf8') > MAX_MARKDOWN_BYTES) return { ok: false, reason: 'SKILL.md 太大（超过 256 KB）' }
+  if (text.trim() === '') return errorResponse('import-markdown-empty')
+  if (Buffer.byteLength(text, 'utf8') > MAX_MARKDOWN_BYTES) return errorResponse('import-markdown-too-large')
 
   const picked = pickName({ override: name, markdown: text })
   if (picked.ok !== true) return picked
@@ -185,20 +183,20 @@ export async function importMarkdown({ dshHome, agentsHome = '', markdown, desti
  */
 export async function importFolder({ dshHome, agentsHome = '', path, destination, name = '' }) {
   const source = resolve(String(path ?? '').trim())
-  if (String(path ?? '').trim() === '') return { ok: false, reason: '请填写技能目录的绝对路径' }
+  if (String(path ?? '').trim() === '') return errorResponse('import-folder-path-missing')
   let info
   try {
     info = await stat(source)
   } catch {
-    return { ok: false, reason: '这个路径不存在' }
+    return errorResponse('import-folder-missing')
   }
-  if (info.isDirectory() !== true) return { ok: false, reason: '这个路径不是目录' }
+  if (info.isDirectory() !== true) return errorResponse('import-folder-not-directory')
 
   let markdown
   try {
     markdown = await readFile(join(source, 'SKILL.md'), 'utf8')
   } catch {
-    return { ok: false, reason: '这个目录里没有 SKILL.md，无法识别为技能' }
+    return errorResponse('import-folder-no-skill')
   }
   const picked = pickName({ override: name, markdown, fallback: basename(source) })
   if (picked.ok !== true) return picked
@@ -206,11 +204,11 @@ export async function importFolder({ dshHome, agentsHome = '', path, destination
   const resolved = resolveDestination({ dshHome, agentsHome, destination })
   if (resolved.ok !== true) return resolved
   const target = join(resolved.root.dir, picked.name)
-  if (resolve(target) === source) return { ok: false, reason: '源目录就是目标目录，无需导入' }
-  if (resolve(target).startsWith(source + sep)) return { ok: false, reason: '目标位置在源目录里面，不能这样导入' }
+  if (resolve(target) === source) return errorResponse('import-folder-same')
+  if (resolve(target).startsWith(source + sep)) return errorResponse('import-folder-target-inside')
   try {
     await stat(target)
-    return { ok: false, reason: '目标位置已经有同名技能，未覆盖' }
+    return errorResponse('import-target-exists')
   } catch {
     // 不存在才能写
   }
@@ -218,7 +216,7 @@ export async function importFolder({ dshHome, agentsHome = '', path, destination
   try {
     await cp(source, target, { recursive: true })
   } catch (error) {
-    return { ok: false, reason: `复制失败：${String(error?.message ?? error)}` }
+    return errorResponse('import-folder-copy-failed', { error: String(error?.message ?? error) })
   }
   return {
     ok: true,

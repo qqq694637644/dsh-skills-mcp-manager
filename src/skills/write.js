@@ -15,6 +15,7 @@ import { cp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { stringify as stringifyYaml } from 'yaml'
+import { errorResponse } from '../errors/codes.js'
 
 /** Writable skill roots, per scope. `id` is what the UI shows as the 区域 tag. */
 export function writableRoots({ dshHome = '', agentsHome = '', projectRoot = '' }) {
@@ -31,11 +32,11 @@ export function writableRoots({ dshHome = '', agentsHome = '', projectRoot = '' 
 /** Names become directory names: reject anything that could escape the root. */
 export function validateSkillName(name) {
   const value = String(name ?? '').trim()
-  if (value === '') return { ok: false, reason: '名字不能为空' }
-  if (value.length > 64) return { ok: false, reason: '名字不能超过 64 个字符' }
-  if (value.includes('/') || value.includes('\\')) return { ok: false, reason: '名字不能包含斜杠' }
-  if (value === '.' || value === '..' || value.startsWith('.')) return { ok: false, reason: '名字不能以点开头，也不能是 . 或 ..' }
-  if (/[\u0000-\u001f]/.test(value)) return { ok: false, reason: '名字不能包含控制字符' }
+  if (value === '') return errorResponse('name-empty')
+  if (value.length > 64) return errorResponse('name-too-long')
+  if (value.includes('/') || value.includes('\\')) return errorResponse('name-slash')
+  if (value === '.' || value === '..' || value.startsWith('.')) return errorResponse('name-dot')
+  if (/[\u0000-\u001f]/.test(value)) return errorResponse('name-control')
   return { ok: true, value }
 }
 
@@ -52,9 +53,9 @@ const backupDirFor = (root, name) => join(root, `.smp-backup-${name}-${Date.now(
 /** Create `<root>/<name>/SKILL.md`; refuses to overwrite an existing skill. */
 export async function createSkill({ dir, name, description = '', body = '' }) {
   const checked = validateSkillName(name)
-  if (!checked.ok) return { ok: false, reason: checked.reason }
+  if (!checked.ok) return checked
   const target = join(dir, checked.value)
-  if (existsSync(target)) return { ok: false, reason: `「${checked.value}」已存在，请换一个名字` }
+  if (existsSync(target)) return errorResponse('skill-create-exists', { name: checked.value })
   await mkdir(target, { recursive: true })
   try {
     await writeFile(join(target, 'SKILL.md'), renderSkillMarkdown({ name: checked.value, description, body }), 'utf8')
@@ -66,7 +67,7 @@ export async function createSkill({ dir, name, description = '', body = '' }) {
      * 目录既不是技能，也没法从面板里删掉或编辑，用户只能看到无法解释的失败。
      */
     await rm(target, { recursive: true, force: true }).catch(() => {})
-    return { ok: false, reason: `写入失败：${String(error?.message ?? error)}` }
+    return errorResponse('write-failed', { error: String(error?.message ?? error) })
   }
   return { ok: true, name: checked.value, path: join(target, 'SKILL.md') }
 }
@@ -74,9 +75,9 @@ export async function createSkill({ dir, name, description = '', body = '' }) {
 /** Overwrite an existing skill's SKILL.md (same directory, same name unless renamed). */
 export async function updateSkill({ dir, name, description = '', body = '' }) {
   const checked = validateSkillName(name)
-  if (!checked.ok) return { ok: false, reason: checked.reason }
+  if (!checked.ok) return checked
   const target = join(dir, checked.value)
-  if (!existsSync(target)) return { ok: false, reason: `「${checked.value}」不存在` }
+  if (!existsSync(target)) return errorResponse('skill-missing', { name: checked.value })
   /**
    * 覆盖前先留一份副本。
    *
@@ -91,7 +92,7 @@ export async function updateSkill({ dir, name, description = '', body = '' }) {
   try {
     await cp(skillFile, backupPath)
   } catch (error) {
-    return { ok: false, reason: `覆盖前备份失败，已放弃写入：${String(error?.message ?? error)}` }
+    return errorResponse('backup-failed', { error: String(error?.message ?? error) })
   }
   await writeFile(skillFile, renderSkillMarkdown({ name: checked.value, description, body }), 'utf8')
   return { ok: true, name: checked.value, path: skillFile, backup: backupPath }
@@ -104,15 +105,15 @@ export async function updateSkill({ dir, name, description = '', body = '' }) {
 export async function renameSkill({ dir, from, to, description = '', body = '' }) {
   const prev = validateSkillName(from)
   const next = validateSkillName(to)
-  if (!prev.ok) return { ok: false, reason: prev.reason }
-  if (!next.ok) return { ok: false, reason: next.reason }
+  if (!prev.ok) return prev
+  if (!next.ok) return next
   if (prev.value === next.value && existsSync(join(dir, prev.value))) {
     return updateSkill({ dir, name: next.value, description, body })
   }
   const source = join(dir, prev.value)
   const target = join(dir, next.value)
-  if (!existsSync(source)) return { ok: false, reason: `「${prev.value}」不存在` }
-  if (existsSync(target)) return { ok: false, reason: `「${next.value}」已存在，不会覆盖` }
+  if (!existsSync(source)) return errorResponse('skill-missing', { name: prev.value })
+  if (existsSync(target)) return errorResponse('skill-rename-target-exists', { name: next.value })
   const backup = backupDirFor(dir, prev.value)
   await cp(source, backup, { recursive: true })
   await rename(source, target)
@@ -125,9 +126,9 @@ export async function renameSkill({ dir, from, to, description = '', body = '' }
 /** Remove a skill directory (with a backup first). */
 export async function deleteSkill({ dir, name }) {
   const checked = validateSkillName(name)
-  if (!checked.ok) return { ok: false, reason: checked.reason }
+  if (!checked.ok) return checked
   const target = join(dir, checked.value)
-  if (!existsSync(target)) return { ok: false, reason: `「${checked.value}」不存在` }
+  if (!existsSync(target)) return errorResponse('skill-missing', { name: checked.value })
   const backup = backupDirFor(dir, checked.value)
   await cp(target, backup, { recursive: true })
   await rm(target, { recursive: true, force: true })

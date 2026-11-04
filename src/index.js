@@ -54,6 +54,7 @@ import { toolsByServer } from './mcp/tools.js'
 import { mergeKnownTools } from './mcp/tools.js'
 import { registerRuntimeRoute } from './mcp/runtime.js'
 import { registerLocaleRoute } from './locale/route.js'
+import { errorFields, errorResponse } from './errors/codes.js'
 import { registerRowRoute } from './mcp/rows.js'
 import { registerReconnectRoute } from './mcp/reconnect.js'
 import { registerToolsSyncRoute } from './mcp/toolsSync.js'
@@ -366,7 +367,7 @@ async function refreshPatchRows(file, { force = false } = {}) {
       }
       return result
     })
-    .catch(() => ({ ok: false, reason: 'patch 读取失败' }))
+    .catch(() => errorResponse('patch-read-failed'))
     .finally(() => { patchRowsInFlight = null })
   return patchRowsInFlight
 }
@@ -942,7 +943,7 @@ export function apply(ctx, config) {
     const action = String(op?.action ?? '')
     const serverName = String(op?.serverName ?? '')
     const server = candidateServers().find((entry) => entry.serverName === serverName)
-    if (server === undefined) return { ok: false, reason: `找不到服务器 ${serverName}`, text: '' }
+    if (server === undefined) return { ...errorResponse('mcp-server-not-found', { name: serverName }), text: '' }
     if (oauthReady.ready !== true) return { ok: false, reason: oauthReady.detail, text: oauthReady.detail }
     if (action === 'status') {
       const status = await oauthFlow.status(serverName, String(server.url ?? ''))
@@ -981,7 +982,7 @@ export function apply(ctx, config) {
       kickProjection()
       return { ok: true, reason: '', ...result }
     }
-    return { ok: false, reason: `未知的 OAuth 操作：${action}`, text: '' }
+    return { ...errorResponse('oauth-unknown-action', { action }), text: '' }
   }
 
   /**
@@ -1985,7 +1986,7 @@ export function apply(ctx, config) {
   const reconnectServer = async (request) => {
     const serverName = String(request?.serverName ?? '')
     const tier = String(request?.tier ?? '')
-    if (serverName === '') return { ok: false, reason: '请求里没有服务器名' }
+    if (serverName === '') return errorResponse('mcp-server-name-missing')
     try {
       if (tier === 'project') {
         const touched = remountProject(serverName)
@@ -1993,15 +1994,15 @@ export function apply(ctx, config) {
         invalidateServerCaches(serverName)
         try { tick() } catch { /* 下一次 tick 会再试 */ }
         return touched === 0
-          ? { ok: false, reason: `没有会话正在使用项目级服务器 ${serverName}，无需重连` }
+          ? errorResponse('mcp-no-session-for-project-server', { name: serverName })
           : { ok: true, reason: '' }
       }
       const row = configuredMcpRows(ctx).rows.find((item) => item.serverName === serverName)
       if (row === undefined || row.entryId === '') {
-        return { ok: false, reason: `profile 里找不到服务器 ${serverName} 对应的行` }
+        return errorResponse('mcp-profile-row-missing', { name: serverName })
       }
       if (row.enabled === false) {
-        return { ok: false, reason: `服务器 ${serverName} 处于停用状态，先在面板里启用它` }
+        return errorResponse('mcp-server-disabled', { name: serverName })
       }
       const entryId = row.entryId
       await applyRowOp(ctx, { op: 'toggle', entryId, enabled: false })
@@ -2026,7 +2027,7 @@ export function apply(ctx, config) {
       try { tick() } catch { /* 下一次 tick 会再试 */ }
       return stopped
         ? { ok: true, reason: '' }
-        : { ok: false, reason: '停用后未等到 Loader 卸载该行，已重新启用，请再试一次' }
+        : errorResponse('mcp-reload-timeout')
     } catch (error) {
       ctx.logger.warn('dsh-skills-mcp-manager: reconnect failed: %s', String(error?.message ?? error))
       return { ok: false, reason: String(error?.message ?? error) }
@@ -2192,7 +2193,7 @@ export function apply(ctx, config) {
     apply: async (request) => {
       const op = String(request?.op ?? '')
       // The route is writes-only; a read has its own GET endpoint.
-      if (op === 'read') return { ok: false, reason: 'read 不走此路由', name: '', body: '', nonce: String(request?.nonce ?? ''), at: new Date().toISOString() }
+      if (op === 'read') return { ...errorResponse('skill-read-not-this-route'), name: '', body: '', nonce: String(request?.nonce ?? ''), at: new Date().toISOString() }
       const result = await applySkillWrite(request)
       finishSkillOp(op, request, result)
       return result
@@ -2209,7 +2210,7 @@ export function apply(ctx, config) {
    */
   const resolveSkillBody = async (wanted) => {
     const path = String(wanted ?? '')
-    if (path === '') return { ok: false, reason: '缺少 path' }
+    if (path === '') return errorResponse('skill-path-missing')
     /**
      * 「这个路径是不是我们自己的技能」要看**两份投影**，不能只看磁盘扫描。
      *
@@ -2239,7 +2240,7 @@ export function apply(ctx, config) {
         if (process.env.SMP_DEBUG) console.error('[dsh-skills-mcp-manager] read rescan failed', error)
       }
     }
-    if (!isKnown()) return { ok: false, reason: '该技能不在当前扫描结果里' }
+    if (!isKnown()) return errorResponse('skill-not-in-scan')
     try {
       const text = await readFile(path, 'utf8')
       return { ok: true, reason: '', name: '', body: bodyOf(text), at: new Date().toISOString() }
@@ -2280,26 +2281,26 @@ export function apply(ctx, config) {
       }
 
       if (op === 'source-enable' || op === 'source-disable') {
-        if (request.source === '') return { ok: false, reason: '缺少 source' }
+        if (request.source === '') return errorResponse('category-source-missing')
         setSourceEnabled(state, request.source, op === 'source-enable')
       } else if (op === 'skill-enable' || op === 'skill-disable') {
         const entry = await skillAt(request.path)
-        if (entry === null) return { ok: false, reason: '该技能不在当前扫描结果里（可能已被移动或删除）' }
+        if (entry === null) return errorResponse('skill-not-in-scan-stale')
         setSkillEnabled(state, entry, op === 'skill-enable')
       } else if (op === 'category-create') {
-        if (!createCategory(state, request.name)) return { ok: false, reason: '分类名无效、为空或已存在' }
+        if (!createCategory(state, request.name)) return errorResponse('category-create-invalid')
       } else if (op === 'category-rename') {
         if (!renameCategory(state, request.from, request.to)) {
-          return { ok: false, reason: '改名失败：原名不存在、新名为空或已存在' }
+          return errorResponse('category-rename-failed')
         }
       } else if (op === 'category-delete') {
-        if (!deleteCategory(state, request.name)) return { ok: false, reason: '分类不存在' }
+        if (!deleteCategory(state, request.name)) return errorResponse('category-not-found')
       } else if (op === 'category-enable' || op === 'category-disable') {
-        if (!setCategoryEnabled(state, request.name, op === 'category-enable')) return { ok: false, reason: '分类不存在' }
+        if (!setCategoryEnabled(state, request.name, op === 'category-enable')) return errorResponse('category-not-found')
       } else if (op === 'category-assign') {
         const entry = await skillAt(request.path)
-        if (entry === null) return { ok: false, reason: '该技能不在当前扫描结果里（可能已被移动或删除）' }
-        if (!assignCategory(state, entry, request.category)) return { ok: false, reason: '分类不存在' }
+        if (entry === null) return errorResponse('skill-not-in-scan-stale')
+        if (!assignCategory(state, entry, request.category)) return errorResponse('category-not-found')
       } else if (op === 'trash-skill') {
         /**
          * 删除 = 移进回收站，不是 `unlink`。
@@ -2308,7 +2309,7 @@ export function apply(ctx, config) {
          * 可靠。`moveSkillToTrash` 自己会校验「来源可写 + 路径落在来源根内」。
          */
         const entry = await skillAt(request.path)
-        if (entry === null) return { ok: false, reason: '该技能不在当前扫描结果里（可能已被移动或删除）' }
+        if (entry === null) return errorResponse('skill-not-in-scan-stale')
         const moved = await moveSkillToTrash({
           dshHome,
           entry,
@@ -2318,7 +2319,7 @@ export function apply(ctx, config) {
             projectRoot: String(entry?.scope ?? '') === 'global' ? '' : String(entry?.scope ?? ''),
           }).map((root) => root.dir),
         })
-        if (moved.ok !== true) return { ok: false, reason: String(moved.reason ?? '删除失败') }
+        if (moved.ok !== true) return moved
         state.trash = [...(Array.isArray(state.trash) ? state.trash : []), moved.record]
         /**
          * 顺手丢掉对应的「已安装」记录。
@@ -2347,7 +2348,7 @@ export function apply(ctx, config) {
       } else if (op === 'trash-restore' || op === 'trash-purge') {
         const record = (Array.isArray(state.trash) ? state.trash : [])
           .find((item) => String(item?.id ?? '') === request.id)
-        if (record === undefined) return { ok: false, reason: '回收站里没有这条记录' }
+        if (record === undefined) return errorResponse('trash-record-not-found')
         const done = op === 'trash-restore'
           ? await restoreFromTrash({
             record,
@@ -2358,20 +2359,20 @@ export function apply(ctx, config) {
             }).map((root) => root.dir),
           })
           : await purgeFromTrash({ dshHome, record })
-        if (done.ok !== true) return { ok: false, reason: String(done.reason ?? '操作失败') }
+        if (done.ok !== true) return done
         dropTrashRecord(state, request.id)
       } else if (op === 'repo-add' || op === 'repo-refresh') {
         /**
          * 添加与刷新是同一条路径：都是「下载一份 zip → 扫描 → 落缓存 → 更新记录」。
          * 区别只在于刷新的对象已经存在，所以保留它的 `addedAt`。
          */
-        if (op === 'repo-refresh' && request.id === '') return { ok: false, reason: '缺少仓库 id' }
+        if (op === 'repo-refresh' && request.id === '') return errorResponse('repo-id-missing')
         const existing = (Array.isArray(state.repositories) ? state.repositories : [])
           .find((item) => String(item?.id ?? '') === request.id)
-        if (op === 'repo-refresh' && existing === undefined) return { ok: false, reason: '没有这个仓库' }
+        if (op === 'repo-refresh' && existing === undefined) return errorResponse('repo-not-in-state')
         const target = op === 'repo-refresh' ? String(existing.url) : request.url
         const scanned = await scanAndCacheRepository({ dshHome, input: target })
-        if (scanned.ok !== true) return { ok: false, reason: String(scanned.reason ?? '添加仓库失败') }
+        if (scanned.ok !== true) return scanned
         const record = {
           ...scanned.record,
           addedAt: existing?.addedAt ?? scanned.record.scannedAt,
@@ -2382,25 +2383,25 @@ export function apply(ctx, config) {
           record,
         ].sort((left, right) => String(left.id).localeCompare(String(right.id)))
       } else if (op === 'repo-remove') {
-        if (request.id === '') return { ok: false, reason: '缺少仓库 id' }
+        if (request.id === '') return errorResponse('repo-id-missing')
         const before = Array.isArray(state.repositories) ? state.repositories.length : 0
         state.repositories = (Array.isArray(state.repositories) ? state.repositories : [])
           .filter((item) => String(item?.id ?? '') !== request.id)
-        if (state.repositories.length === before) return { ok: false, reason: '没有这个仓库' }
+        if (state.repositories.length === before) return errorResponse('repo-not-in-state')
         // 缓存里的压缩包一并删掉（记录没了，缓存就是垃圾）
         await dropRepositoryCache(dshHome, request.id)
       } else if (op === 'repo-install') {
         const repo = (Array.isArray(state.repositories) ? state.repositories : [])
           .find((item) => String(item?.id ?? '') === request.id)
-        if (repo === undefined) return { ok: false, reason: '没有这个仓库' }
+        if (repo === undefined) return errorResponse('repo-not-in-state')
         const skill = (Array.isArray(repo.skills) ? repo.skills : [])
           .find((item) => String(item?.name ?? '') === request.skill)
-        if (skill === undefined) return { ok: false, reason: '这个仓库里没有该技能' }
+        if (skill === undefined) return errorResponse('repo-skill-not-in-repo')
         const done = await installSkill({
           dshHome, agentsHome: agentsHome(), repo, skill,
           destination: { scope: request.scope, destId: request.destId, project: writableProjectRoot(request.project) },
         })
-        if (done.ok !== true) return { ok: false, reason: String(done.reason ?? '安装失败') }
+        if (done.ok !== true) return done
         state.installs = [
           ...(Array.isArray(state.installs) ? state.installs : []).filter((item) => String(item?.id ?? '') !== done.install.id),
           done.install,
@@ -2408,7 +2409,7 @@ export function apply(ctx, config) {
       } else if (op === 'repo-uninstall' || op === 'repo-preview' || op === 'repo-update' || op === 'repo-rollback') {
         const install = (Array.isArray(state.installs) ? state.installs : [])
           .find((item) => String(item?.id ?? '') === request.id)
-        if (install === undefined) return { ok: false, reason: '没有这条安装记录' }
+        if (install === undefined) return errorResponse('repo-install-record-missing')
         const repo = (Array.isArray(state.repositories) ? state.repositories : [])
           .find((item) => String(item?.id ?? '') === install.repoId)
         const skill = (Array.isArray(repo?.skills) ? repo.skills : [])
@@ -2442,7 +2443,7 @@ export function apply(ctx, config) {
              * 悄悄丢弃记录（真出问题时那条记录是唯一线索）。
              */
             if (!String(moved.reason ?? '').includes('已不在磁盘上')) {
-              return { ok: false, reason: String(moved.reason ?? '卸载失败') }
+              return moved
             }
             note = '目录已不存在，已摘掉这条安装记录（回收站里没有可恢复的内容）'
           } else {
@@ -2451,17 +2452,17 @@ export function apply(ctx, config) {
           dropInstall(state, install.id)
         } else if (op === 'repo-update') {
           const done = await updateInstalled({ dshHome, agentsHome: agentsHome(), install, skill })
-          if (done.ok !== true) return { ok: false, reason: String(done.reason ?? '更新失败') }
+          if (done.ok !== true) return done
           install.installedSignature = done.installedSignature
           install.updatedAt = String(done.updatedAt ?? new Date().toISOString())
         } else {
           const done = await rollbackInstalled({ dshHome, agentsHome: agentsHome(), install })
-          if (done.ok !== true) return { ok: false, reason: String(done.reason ?? '回滚失败') }
+          if (done.ok !== true) return done
           install.installedSignature = done.installedSignature
           install.updatedAt = new Date().toISOString()
         }
       } else {
-        return { ok: false, reason: `未知操作「${op}」` }
+        return errorResponse('skills-unknown-operation', { op })
       }
       await writeManagerState(dshHome, state)
       try { invalidateGovernance() } catch { /* 没有 provider 时无事可做 */ }
@@ -2492,7 +2493,7 @@ export function apply(ctx, config) {
           const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
           version = String(manifest.version ?? '')
         } catch {
-          return { ok: false, reason: '读不到本插件版本' }
+          return errorResponse('update-current-version-unreadable')
         }
         const result = await checkForUpdate({ currentVersion: version })
         return result.ok === true
@@ -2505,19 +2506,19 @@ export function apply(ctx, config) {
             url: result.url,
             source: result.source,
           }
-          : { ok: false, reason: String(result.reason ?? '检查更新失败') }
+          : result
       }
       if (op === 'catalog-search') {
         const result = request.catalog === 'clawhub'
           ? await searchClawHub(request.q, { limit: request.limit || 20 })
           : await searchSkillsSh(request.q)
-        return result.ok === true ? { ok: true, reason: '', items: result.items } : { ok: false, reason: String(result.reason ?? '搜索失败') }
+        return result.ok === true ? { ok: true, reason: '', items: result.items } : result
       }
       if (op === 'catalog-list') {
         const result = await listClawHub({ cursor: request.cursor, limit: request.limit || 10 })
         return result.ok === true
           ? { ok: true, reason: '', items: result.items, nextCursor: result.nextCursor }
-          : { ok: false, reason: String(result.reason ?? '读取榜单失败') }
+          : result
       }
       if (op === 'catalog-install') {        const done = await installCatalogSkill({
           dshHome: resolveDshHome(),
@@ -2528,7 +2529,7 @@ export function apply(ctx, config) {
           },
           destination: { scope: request.scope, destId: request.destId, project: writableProjectRoot(request.project) },
         })
-        if (done.ok !== true) return { ok: false, reason: String(done.reason ?? '安装失败') }
+        if (done.ok !== true) return done
         // 写盘后必须让 provider 的目录缓存失效：否则技能在面板里可见，模型侧却要等到
         // 下一次 invalidate 或重启才能调用（"装完立刻让模型用"是最常见的动作）。
         try { invalidateGovernance() } catch { /* 没有 provider 时无事可做 */ }
@@ -2537,7 +2538,7 @@ export function apply(ctx, config) {
         try { tick() } catch { /* 下一次 tick 会再试 */ }
         return { ok: true, reason: '', skill: { name: done.name, dir: done.dir, scope: done.scope, destId: done.destId } }
       }
-      return { ok: false, reason: `未知市场操作「${op}」` }
+      return errorResponse('market-unknown-operation', { op })
     },
   }))
 
@@ -2561,8 +2562,8 @@ export function apply(ctx, config) {
       if (op === 'import-zip') result = await importZip({ ...common, base64: request.base64 })
       else if (op === 'import-markdown') result = await importMarkdown({ ...common, markdown: request.markdown })
       else if (op === 'import-folder') result = await importFolder({ ...common, path: request.path })
-      else return { ok: false, reason: `未知导入类型「${op}」` }
-      if (result.ok !== true) return { ok: false, reason: String(result.reason ?? '导入失败') }
+      else return errorResponse('import-unknown-type', { op })
+      if (result.ok !== true) return result
       // 导入写的是 DSH 的技能根：磁盘扫描与治理视图都要立刻跟上
       try { invalidateGovernance() } catch { /* 没有 provider 时无事可做 */ }
       await refreshDiscovered(governanceProjectRoots())
@@ -2596,7 +2597,7 @@ export function apply(ctx, config) {
         },
         complete: async (serverName, url, code) => {
           await oauthBootstrapped
-          if (oauthFlow === null) return { ok: false, reason: 'oauth-sdk-unavailable', detail: '', text: 'OAuth 支持未安装' }
+          if (oauthFlow === null) return { ok: false, reason: 'oauth-sdk-unavailable', detail: '', ...errorFields('oauth-not-installed', {}, 'text') }
           const done = await oauthFlow.complete(serverName, url, code)
           // The client's own retry loop has already given up by the time a user authorizes
           // (10 attempts with backoff). A fresh instance is the only way back.

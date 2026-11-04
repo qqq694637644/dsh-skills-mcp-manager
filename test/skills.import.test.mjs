@@ -91,7 +91,7 @@ test('importZip：压缩包里的 ../ 越界路径被拒绝，且不留下半个
   })
   const done = await importZip({ dshHome, base64: toBase64(zip), destination: DEST })
   assert.equal(done.ok, false)
-  assert.match(String(done.reason), /越界/)
+  assert.match(String(done.reason), /越界|escapes target/)
   assert.equal(existsSync(join(dshHome, 'skills', 'sneaky')), false, '失败时不能留下半成品目录')
 })
 

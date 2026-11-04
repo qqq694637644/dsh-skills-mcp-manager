@@ -27,6 +27,7 @@
 import { tokenStatus, pendingIsFresh } from './provider.js'
 import { stateMatches } from './state.js'
 import { exchangeInsecureToken, insecureTokenEndpoint, tokenExchangeErrorText } from './insecure.js'
+import { errorFields } from '../../errors/codes.js'
 
 /** 发起授权的失败原因。 */
 export const FLOW_ERRORS = Object.freeze({
@@ -94,7 +95,7 @@ async function completeInsecure({ serverName, provider, record, tokenEndpoint, c
     return {
       ok: false,
       reason: FLOW_ERRORS.completeFailed,
-      detail: '缺少 client_id：明文例外要求先用动态注册（或手填）拿到客户端信息',
+      ...errorFields('oauth-client-id-missing', {}, 'detail'),
       text: flowReasonText(FLOW_ERRORS.completeFailed),
     }
   }
@@ -103,7 +104,7 @@ async function completeInsecure({ serverName, provider, record, tokenEndpoint, c
     return {
       ok: false,
       reason: FLOW_ERRORS.completeFailed,
-      detail: '缺少 PKCE code_verifier：授权流程可能已过期，请重新点一次「授权」',
+      ...errorFields('oauth-pkce-missing', {}, 'detail'),
       text: flowReasonText(FLOW_ERRORS.completeFailed),
     }
   }
@@ -317,7 +318,7 @@ export function createOAuthFlow({ store, getSdk, makeProvider, allowInsecure, cu
   }
   const { sdk } = sdkResult
   if (typeof sdk.refreshAuthorization !== 'function') {
-    return { ok: false, reason: FLOW_ERRORS.noSdk, detail: 'SDK 没有导出 refreshAuthorization', text: flowReasonText(FLOW_ERRORS.noSdk) }
+    return { ok: false, reason: FLOW_ERRORS.noSdk, ...errorFields('oauth-sdk-refresh-missing', {}, 'detail'), text: flowReasonText(FLOW_ERRORS.noSdk) }
   }
   try {
     const tokens = await sdk.refreshAuthorization(asUrl, {
@@ -440,7 +441,7 @@ export function createOAuthFlow({ store, getSdk, makeProvider, allowInsecure, cu
           return {
             kind: 'error',
             reason: FLOW_ERRORS.beginFailed,
-            detail: 'SDK 返回 REDIRECT 但没有交回授权 URL',
+            ...errorFields('oauth-sdk-redirect-no-url', {}, 'detail'),
             text: flowReasonText(FLOW_ERRORS.beginFailed),
           }
         }
@@ -539,7 +540,7 @@ export function createOAuthFlow({ store, getSdk, makeProvider, allowInsecure, cu
           return {
             ok: false,
             reason: FLOW_ERRORS.completeFailed,
-            detail: `SDK 返回 ${String(result)}`,
+            ...errorFields('oauth-sdk-unexpected-result', { result: String(result) }, 'detail'),
             text: flowReasonText(FLOW_ERRORS.completeFailed),
           }
         }

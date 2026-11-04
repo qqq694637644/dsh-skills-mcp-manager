@@ -35,18 +35,18 @@
 | --- | ---: | --- |
 | `src/update.js` | 8 | ✅ 已迁移 |
 | `src/import/scan.js` | 2（+1 条英文 unknown source） | ✅ 已迁移 |
-| `src/index.js` | 32 | ⬜ 待迁移 |
-| `src/mcp/oauth/flow.js` | 5 | ⬜ 待迁移 |
-| `src/mcp/oauth/insecure.js` | 2 | ⬜ 待迁移 |
-| `src/mcp/oauth/sdk.js` | 2 | ⬜ 待迁移 |
-| `src/mcp/toolsSync.js` | 1 | ⬜ 待迁移 |
-| `src/patch/readRows.js` | 1 | ⬜ 待迁移 |
-| `src/skills/import.js` | 21 | ⬜ 待迁移 |
-| `src/skills/repositories.js` | 11 | ⬜ 待迁移 |
-| `src/skills/repository-install.js` | 16 | ⬜ 待迁移 |
-| `src/skills/trash.js` | 17 | ⬜ 待迁移 |
-| `src/skills/write.js` | 12 | ⬜ 待迁移 |
-| 合计 | **130** | 已迁移 13 |
+| `src/index.js` | 32 | ✅ 已迁移 |
+| `src/mcp/oauth/flow.js` | 5 | ✅ 已迁移 |
+| `src/mcp/oauth/insecure.js` | 2 | ✅ 已迁移 |
+| `src/mcp/oauth/sdk.js` | 2 | ✅ 已迁移 |
+| `src/mcp/toolsSync.js` | 1 | ✅ 已迁移 |
+| `src/patch/readRows.js` | 1 | ✅ 已迁移 |
+| `src/skills/import.js` | 21 | ✅ 已迁移 |
+| `src/skills/repositories.js` | 11 | ✅ 已迁移 |
+| `src/skills/repository-install.js` | 16 | ✅ 已迁移 |
+| `src/skills/trash.js` | 17 | ✅ 已迁移 |
+| `src/skills/write.js` | 12 | ✅ 已迁移 |
+| 合计 | **130** | 已迁移 130（Host 响应面完成） |
 
 ## 客户端接入进度
 
