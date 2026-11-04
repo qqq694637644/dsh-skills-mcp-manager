@@ -1,4 +1,5 @@
 import { field } from './field.jsx'
+import { t } from '../i18n.js'
 
 /**
  * Add / edit a skill, using DSH's own Modal so it matches the built-in dialogs.
@@ -39,29 +40,29 @@ export function skillDialogView({
     <Modal
       open
       onClose={onCancel}
-      closeLabel="关闭"
-      title={isEdit ? `编辑技能「${dialog.prevName}」` : '添加技能'}
+      closeLabel={t("关闭")}
+      title={isEdit ? t('编辑技能「{0}」', [dialog.prevName]) : t('添加技能')}
       description={isEdit
-        ? '层级、工作区、目录不可修改；改名会移动目录并改写 SKILL.md（原目录自动备份）。'
-        : '写入 <目标目录>/<名字>/SKILL.md，目录不存在会自动创建。'}
+        ? t('层级、工作区、目录不可修改；改名会移动目录并改写 SKILL.md（原目录自动备份）。')
+        : t('写入 <目标目录>/<名字>/SKILL.md，目录不存在会自动创建。')}
       footer={
         <>
-          <Button variant="outline" key="cancel" onClick={onCancel}>取消</Button>
+          <Button variant="outline" key="cancel" onClick={onCancel}>{t('取消')}</Button>
           <Button variant="primary" key="save" disabled={pending} onClick={onSave}>
-            {pending ? '保存中…' : (isEdit ? '保存' : '创建')}
+            {pending ? t('保存中…') : (isEdit ? t('保存') : t('创建'))}
           </Button>
         </>
       }
     >
       <div className="smp-skillDialogBody" key="body">
       <div className="smp-formGrid" key="grid">
-        {field('层级', (
+        {field(t('层级'), (
           <select
             className="smp-select" value={dialog.scope} disabled={isEdit}
             onChange={(event) => onScope(event.target.value)}
           >
-            <option value="global" key="g">全局 —— 所有工作区都能用</option>
-            <option value="project" key="p">项目级 —— 只在某个工作区</option>
+            <option value="global" key="g">{t('全局 —— 所有工作区都能用')}</option>
+            <option value="project" key="p">{t('项目级 —— 只在某个工作区')}</option>
           </select>
         ))}
         {/*
@@ -69,28 +70,28 @@ export function skillDialogView({
           so switching tiers does not reshuffle the form, and mirroring MCP's scope picker
           (registry entries plus 「自定义路径…」) so both dialogs are learned once.
         */}
-        {!isProject ? null : field('工作区', (
+        {!isProject ? null : field(t('工作区'), (
           <div className="smp-scopePick" key="workspace">
             <select
               className="smp-select" key="sel" disabled={isEdit}
               value={custom ? '__custom__' : (dialog.project ?? '')}
               onChange={(event) => onProject(event.target.value)}
             >
-              <option value="" key="none">请选择工作区</option>
+              <option value="" key="none">{t('请选择工作区')}</option>
               {workspaceChoices.map(([path, title]) => <option value={path} key={path}>{title}</option>)}
-              <option value="__custom__" key="custom">自定义路径…</option>
+              <option value="__custom__" key="custom">{t('自定义路径…')}</option>
             </select>
             {!custom ? null : (
               <input
                 className="smp-input" key="custom" disabled={isEdit}
-                placeholder="工作区绝对路径"
+                placeholder={t("工作区绝对路径")}
                 value={dialog.project ?? ''}
                 onChange={(event) => onProjectCustom(event.target.value)}
               />
             )}
           </div>
         ), true)}
-        {field('目录', (
+        {field(t('目录'), (
           <select
             className="smp-select" value={dialog.id === 'agents' ? 'agents' : 'dsh'} disabled={isEdit}
             onChange={(event) => onRoot(event.target.value)}
@@ -108,24 +109,24 @@ export function skillDialogView({
           // `.smp-skillPath` spans both grid columns (it is not a `.smp-field`, so the
           // `data-wide` convention does not apply to it).
           <p className="smp-note smp-skillPath" key="resolved">
-            {`将写入 ${resolvedPath}/<名字>/SKILL.md`}
+            {t('将写入 {0}/<名字>/SKILL.md', [resolvedPath])}
           </p>
         )}
-        {field('名称（会成为目录名）', (
-          <input className="smp-input" value={draft.name ?? ''} placeholder="例如 my-skill"
+        {field(t('名称（会成为目录名）'), (
+          <input className="smp-input" value={draft.name ?? ''} placeholder={t("例如 my-skill")}
                  onChange={(event) => onName(event.target.value)} />
         ))}
-        {field('描述', (
-          <input className="smp-input" value={draft.description ?? ''} placeholder="一句话说明何时使用它"
+        {field(t('描述'), (
+          <input className="smp-input" value={draft.description ?? ''} placeholder={t("一句话说明何时使用它")}
                  onChange={(event) => onDescription(event.target.value)} />
         ))}
-        {field('正文（SKILL.md 的内容）', (
+        {field(t('正文（SKILL.md 的内容）'), (
           <textarea className="smp-textarea" rows={8} value={draft.body ?? ''}
                     onChange={(event) => onBody(event.target.value)} />
         ), true)}
       </div>
       {pending ? (
-        <div className="smp-pendingHint" key="pending">正在与磁盘同步…</div>
+        <div className="smp-pendingHint" key="pending">{t('正在与磁盘同步…')}</div>
       ) : null}
       {error !== '' ? <div className="smp-error" key="err" style={{ marginTop: 8 }}>{error}</div> : null}
       </div>

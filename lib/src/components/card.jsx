@@ -5,6 +5,7 @@
  * can be unit-tested. `env` values are masked — the panel never shows secrets in
  * full once they are in the config file.
  */
+import { t } from '../i18n.js'
 
 /** Mask every `KEY=value` value while keeping the key. */
 export function maskEnv(env) {
@@ -79,19 +80,19 @@ export function hasInjectedPath(env) {
  */
 function transportPairs(transport, values) {
   if (transport === 'stdio') {
-    const pairs = [['命令', values.command || '—']]
-    if (values.args !== '') pairs.push(['参数', values.args])
+    const pairs = [[t('命令'), values.command || '—']]
+    if (values.args !== '') pairs.push([t('参数'), values.args])
     // Only the user's own variables get the 「环境变量」 row; the Host-injected PATH
     // is reported separately (see `splitEnv`) so it cannot be mistaken for config.
     const { own, path } = splitEnv(values.env)
-    if (own !== '') pairs.push(['环境变量', maskEnv(own)])
+    if (own !== '') pairs.push([t('环境变量'), maskEnv(own)])
     // The key stays short on purpose: the label column is 76px wide, and a longer
     // key wrapped onto two lines and broke the grid's alignment.
-    if (path !== '') pairs.push(['PATH', 'DSH 自动注入 · 跟随系统 PATH，让 npx/node 能被找到'])
+    if (path !== '') pairs.push(['PATH', t('DSH 自动注入 · 跟随系统 PATH，让 npx/node 能被找到')])
     return pairs
   }
-  const pairs = [['地址', values.url || '—']]
-  if (values.headers !== '') pairs.push(['请求头', maskHeaders(values.headers)])
+  const pairs = [[t('地址'), values.url || '—']]
+  if (values.headers !== '') pairs.push([t('请求头'), maskHeaders(values.headers)])
   return pairs
 }
 
@@ -99,8 +100,8 @@ function transportPairs(transport, values) {
 export function rowDetailPairs(row = {}) {
   const transport = row.transport || 'streamable-http'
   return [
-    ['行 id', String(row.entryId ?? '').replace(/^include:/, '')],
-    ['传输', transport],
+    [t('行 id'), String(row.entryId ?? '').replace(/^include:/, '')],
+    [t('传输'), transport],
     ...transportPairs(transport, {
       // For a stdio row the projection merges command + args into `target`.
       command: transport === 'stdio' ? (row.target || '') : '',
@@ -112,7 +113,7 @@ export function rowDetailPairs(row = {}) {
     // The scope *is* the tier now: `global` means the Loader connects this row and every
     // agent sees it; an absolute path means this plugin mounts it for the agent whose
     // working directory falls under it. One row, one list — so the card states which.
-    ['作用域', scopeLabelOf(row.scope)],
+    [t('作用域'), scopeLabelOf(row.scope)],
     // 没有「状态」行：卡片右侧的开关就是启用状态的唯一真源。再写一行字等于同一件事有
     // 两个出处，而它们会漂移（开关是乐观更新的，文字来自投影，中间必然有一段时间不一致）。
   ]
@@ -129,7 +130,7 @@ export function rowDetailPairs(row = {}) {
  */
 export function scopeLabelOf(scope) {
   const value = typeof scope === 'string' ? scope : ''
-  if (value === '' || value === 'global') return '全局'
+  if (value === '' || value === 'global') return t('全局')
   return value
 }
 
@@ -167,13 +168,13 @@ export const TOOL_ERROR_REASONS = {
 
 /** Human text for a Host-reported reason code (kept in step with the Host table). */
 const REASON_TEXT = {
-  'loading': '正在读取当前工具清单',
-  'runtime-unavailable': '无法读取 Host 运行时数据（请确认 Host 已更新且连接正常）',
-  'lookup-failed': '无法访问工具服务（cordis 服务尚未注入）',
-  'service-missing': '当前配置里没有工具注册表（dsh-tools 未挂载）',
-  'api-missing': '工具注册表版本过旧，没有 schemas() 接口',
-  'read-failed': '读取工具注册表出错',
-  'bad-shape': '工具注册表返回了意外的数据形状',
+  'loading': t('正在读取当前工具清单'),
+  'runtime-unavailable': t('无法读取 Host 运行时数据（请确认 Host 已更新且连接正常）'),
+  'lookup-failed': t('无法访问工具服务（cordis 服务尚未注入）'),
+  'service-missing': t('当前配置里没有工具注册表（dsh-tools 未挂载）'),
+  'api-missing': t('工具注册表版本过旧，没有 schemas() 接口'),
+  'read-failed': t('读取工具注册表出错'),
+  'bad-shape': t('工具注册表返回了意外的数据形状'),
 }
 
 export function toolsForServer(serverTools, serverName, serverToolsError = undefined) {
@@ -199,14 +200,14 @@ export function toolsForServer(serverTools, serverName, serverToolsError = undef
 /** One-line summary of an inventory result, including why it is unknown. */
 export function toolsSummary(inventory) {
   if (inventory?.state === 'listed') {
-    if (inventory.tools.length === 0) return '暂无已注册的工具（可能未连接或该服务器没有工具）'
-    return `${inventory.tools.length} 个工具`
+    if (inventory.tools.length === 0) return t('暂无已注册的工具（可能未连接或该服务器没有工具）')
+    return t('{0} 个工具', { 0: inventory.tools.length, n: inventory.tools.length })
   }
-  if (inventory?.state === 'absent') return '尚未发布该服务器的工具（刚添加的话稍等片刻）'
+  if (inventory?.state === 'absent') return t('尚未发布该服务器的工具（刚添加的话稍等片刻）')
   if (inventory?.kind === TOOL_ERROR_REASONS.hostStale) {
-    return '需要重启 DSH 后可见（当前运行的 Host 是旧版本）'
+    return t('需要重启 DSH 后可见（当前运行的 Host 是旧版本）')
   }
   const text = REASON_TEXT[inventory?.reason]
-  if (text === undefined) return '工具清单不可读'
-  return inventory?.detail ? `${text}：${inventory.detail}` : text
+  if (text === undefined) return t('工具清单不可读')
+  return inventory?.detail ? t('{0}：{1}', { 0: text, 1: inventory.detail }) : text
 }

@@ -17,6 +17,7 @@
  * bounds an unusually long one.
  */
 import { toolsSummary } from './card.jsx'
+import { t } from '../i18n.js'
 
 /**
  * Normalize a description for display: collapse whitespace, keep the text whole.
@@ -36,7 +37,7 @@ export function toolListNode(inventory, keyPrefix = 'tools', filter = null) {
   // unreadable states — which render the heading alone — line up with the full list.
   const head = (trailing, tone) => (
     <div className="smp-toolHead" key={keyPrefix}>
-      <span className="smp-toolTitle">工具</span>
+      <span className="smp-toolTitle">{t('工具')}</span>
       <span className="smp-toolCount" data-tone={tone}>{trailing}</span>
     </div>
   )
@@ -59,11 +60,11 @@ export function toolListNode(inventory, keyPrefix = 'tools', filter = null) {
   return (
     <div className="smp-tools" key={keyPrefix}>
       <div className="smp-toolHead" key="head">
-        <span className="smp-toolTitle">工具</span>
+        <span className="smp-toolTitle">{t('工具')}</span>
         <span className="smp-toolCount">{`(${tools.length})`}</span>
         {canEdit ? (
           <span className="smp-toolModes" key="modes">
-            {[['off', '全部保留'], ['allow', '只保留勾选'], ['deny', '只挡勾选']].map(([value, label]) => (
+            {[['off', t('全部保留')], ['allow', t('只保留勾选')], ['deny', t('只挡勾选')]].map(([value, label]) => (
               <button
                 type="button" key={value} className="smp-toolMode"
                 data-active={String(mode === value)}
@@ -81,8 +82,8 @@ export function toolListNode(inventory, keyPrefix = 'tools', filter = null) {
       {picking ? (
         <p className="smp-note" key="hint">
           {mode === 'allow'
-            ? `保留勾选的工具（${selected.size}/${tools.length}）；全不勾 = 不限制。`
-            : `挡掉勾选的工具（${selected.size}/${tools.length}）。`}
+            ? t('保留勾选的工具（{0}/{1}）；全不勾 = 不限制。', [selected.size, tools.length])
+            : t('挡掉勾选的工具（{0}/{1}）。', [selected.size, tools.length])}
         </p>
       ) : null}
       <ul className="smp-toolList">

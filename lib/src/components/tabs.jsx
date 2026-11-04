@@ -5,11 +5,12 @@
  * editor and the expanded row — that reset lives in the caller's onSelect.
  */
 import { tabLabel } from './filters.js'
+import { t } from '../i18n.js'
 
 /** Tab ids in render order, with their display titles. */
 export const TAB_ITEMS = [
   { id: 'mcp', title: 'MCP' },
-  { id: 'skills', title: 'Skills' },
+  { id: 'skills', get title() { return t('Skills') } },
 ]
 
 /** Build the tab strip. `counts` is `{ mcp, skills }`. */

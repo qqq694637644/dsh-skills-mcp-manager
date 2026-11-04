@@ -473,6 +473,12 @@ export async function bootPanel(doc = emptyDoc(), options = {}) {
       },
     },
     configForms: { get: () => form },
+    // Optional `locale` / `effect` stubs: the panel registers its dictionaries and
+    // binds the translator during `apply`, and a test has to observe those calls.
+    // Omitted by default so the many existing bootPanel callers keep the minimal
+    // context they were written against.
+    ...(options.effect === undefined ? {} : { effect: options.effect }),
+    ...(options.locale === undefined ? {} : { locale: options.locale }),
   })
   runtime.render()
   const settle = async () => {

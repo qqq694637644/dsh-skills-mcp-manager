@@ -19,6 +19,7 @@
  *   · 组内不折叠：一屏看全所有来源的启停状态，比省下几次点击重要。
  */
 import { installForSkill } from '../skillInstalls.js'
+import { t } from '../i18n.js'
 
 /** 描述压成一行（卡片自身的 CSS 会把视觉上封在两行，完整文本留在 `title` 里）。 */
 function descriptionText(value) {
@@ -91,9 +92,9 @@ function skillCardNode(skill, options, key) {
   const previewDetail = preview === undefined
     ? ''
     : [
-      (preview?.additions ?? []).length > 0 ? `新增 ${preview.additions.length}` : '',
-      (preview?.changes ?? []).length > 0 ? `修改 ${preview.changes.length}` : '',
-      (preview?.removals ?? []).length > 0 ? `删除 ${preview.removals.length}` : '',
+      (preview?.additions ?? []).length > 0 ? t('新增 {0}', [preview.additions.length]) : '',
+      (preview?.changes ?? []).length > 0 ? t('修改 {0}', [preview.changes.length]) : '',
+      (preview?.removals ?? []).length > 0 ? t('删除 {0}', [preview.removals.length]) : '',
     ].filter((part) => part !== '').join(' / ')
   const statusLabel = install === null
     ? ''
@@ -111,7 +112,7 @@ function skillCardNode(skill, options, key) {
             <input
               className="smp-skillPickInput"
               type="checkbox"
-              aria-label={`选择技能「${name}」`}
+              aria-label={t('选择技能「{0}」', [name])}
               checked={Array.isArray(options.selectedPaths) && options.selectedPaths.includes(path)}
               disabled={options.busy}
               onChange={() => { if (typeof options.onSelectSkill === 'function') options.onSelectSkill(path) }}
@@ -123,15 +124,15 @@ function skillCardNode(skill, options, key) {
               return (
                 <span
                   className="smp-tag" data-tone="neutral"
-                  title={`同名技能由「${shadowedBy}」提供（优先级更高），这一份不会提供给模型`}
-                >{`被「${shadowedBy}」覆盖`}</span>
+                  title={t('同名技能由「{0}」提供（优先级更高），这一份不会提供给模型', [shadowedBy])}
+                >{t('被「{0}」覆盖', [shadowedBy])}</span>
               )
             })()}
             {suppressed ? (
               <span
                 className="smp-tag" data-tone="neutral"
-                title="技能自身是启用的；它所在的来源被停用了，所以现在不提供给模型"
-              >来源已停用</span>
+                title={t("技能自身是启用的；它所在的来源被停用了，所以现在不提供给模型")}
+              >{t('来源已停用')}</span>
             ) : null}
           </div>
           {description === '' ? null : (
@@ -153,7 +154,7 @@ function skillCardNode(skill, options, key) {
               if (typeof options.onPreview === 'function') options.onPreview(path)
             }}
           >
-            查看详情
+            {t('查看详情')}
           </button>
           {/* 只对可写来源显示删除/编辑：外部 Agent 目录只读，那边按了也只能失败。
               删除是**移进回收站**（可恢复），所以这里不必做二次确认。 */}
@@ -165,7 +166,7 @@ function skillCardNode(skill, options, key) {
               disabled={options.busy}
               onClick={() => { options.onEdit(path) }}
             >
-              编辑
+              {t('编辑')}
             </button>
           )}
           {skill.readonly === true || typeof options.onTrash !== 'function' ? null : (
@@ -174,10 +175,10 @@ function skillCardNode(skill, options, key) {
               data-variant="outline"
               type="button"
               disabled={options.busy}
-              title="移进回收站，可以恢复"
+              title={t("移进回收站，可以恢复")}
               onClick={() => { options.onTrash(path) }}
             >
-              移入回收站
+              {t('移入回收站')}
             </button>
           )}
           {/*
@@ -191,8 +192,8 @@ function skillCardNode(skill, options, key) {
               data-variant="outline"
               type="button"
               aria-expanded={menuOpen ? 'true' : 'false'}
-              aria-label={`技能「${name}」的仓库操作`}
-              title="仓库操作：检查更新 / 更新 / 回滚 / 卸载"
+              aria-label={t('技能「{0}」的仓库操作', [name])}
+              title={t("仓库操作：检查更新 / 更新 / 回滚 / 卸载")}
               disabled={options.busy}
               onClick={() => {
                 if (typeof options.onToggleInstallMenu === 'function') options.onToggleInstallMenu(path)
@@ -227,13 +228,13 @@ function skillCardNode(skill, options, key) {
               ? 'warn'
               : (state === 'on' ? 'ok' : 'neutral')
             const text = state === 'covered'
-              ? '被覆盖'
-              : (state === 'suspended' ? '来源停用' : (state === 'on' ? '启用中' : '未启用'))
+              ? t('被覆盖')
+              : (state === 'suspended' ? t('来源停用') : (state === 'on' ? t('启用中') : t('未启用')))
             const hint = state === 'covered'
-              ? `同名技能由「${shadowedBy}」提供（优先级更高），这一份不会提供给模型`
+              ? t('同名技能由「{0}」提供（优先级更高），这一份不会提供给模型', [shadowedBy])
               : (state === 'suspended'
-                ? '技能自身是启用的，但它所在的来源被停用了，所以现在不提供给模型'
-                : (state === 'on' ? '已提供给模型' : '不提供给模型（勾选后点「批量启用」可恢复）'))
+                ? t('技能自身是启用的，但它所在的来源被停用了，所以现在不提供给模型')
+                : (state === 'on' ? t('已提供给模型') : t('不提供给模型（勾选后点「批量启用」可恢复）')))
             return (
               <span className="smp-status" key="state" title={hint}>
                 <span className="smp-dot" data-dot={tone} aria-hidden="true" />
@@ -258,7 +259,7 @@ function skillCardNode(skill, options, key) {
           {previewDetail === '' ? null : <span className="smp-skillMoreNote">{previewDetail}</span>}
           {install.dir === '' ? null : (
             <span className="smp-skillMoreNote" title={String(install.dir)}>
-              {`落盘：${String(install.dir)}`}
+              {t('落盘：{0}', [String(install.dir)])}
             </span>
           )}
           <span className="smp-skillMoreActions">
@@ -266,28 +267,28 @@ function skillCardNode(skill, options, key) {
               className="smp-button" data-variant="outline" type="button"
               disabled={Boolean(options.repoBusy)}
               onClick={() => { if (typeof options.onCheckInstall === 'function') options.onCheckInstall(String(install.id ?? '')) }}
-            >检查更新</button>
+            >{t('检查更新')}</button>
             <button
               className="smp-button" data-variant="primary" type="button"
               disabled={Boolean(options.repoBusy) || preview === undefined || previewStatus === 'up-to-date'}
               onClick={() => {
                 if (typeof options.onRepoAction === 'function') options.onRepoAction('repo-update', String(install.id ?? ''))
               }}
-            >更新</button>
+            >{t('更新')}</button>
             <button
               className="smp-button" data-variant="outline" type="button"
               disabled={Boolean(options.repoBusy)}
               onClick={() => {
                 if (typeof options.onRepoAction === 'function') options.onRepoAction('repo-rollback', String(install.id ?? ''))
               }}
-            >回滚</button>
+            >{t('回滚')}</button>
             <button
               className="smp-button" data-variant="outline" type="button"
               disabled={Boolean(options.repoBusy)}
               onClick={() => {
                 if (typeof options.onRepoAction === 'function') options.onRepoAction('repo-uninstall', String(install.id ?? ''))
               }}
-            >卸载</button>
+            >{t('卸载')}</button>
           </span>
         </div>
       ) : null}
@@ -306,7 +307,7 @@ function sourceGroupNode(group, options, index) {
   const exists = group.exists !== false
   const readonly = group.readonly === true
   const skills = Array.isArray(group.skills) ? group.skills : []
-  const label = String(group.label ?? group.key ?? '')
+  const label = t(String(group.label ?? group.key ?? ''))
   const path = String(group.path ?? '')
   /**
    * 折叠状态由调用方拥有（`expanded === null` 表示「没人接管」→ 全展开）。
@@ -339,7 +340,7 @@ function sourceGroupNode(group, options, index) {
           type="button"
           className="smp-skillSourceToggle"
           aria-expanded={open}
-          aria-label={`${open ? '收起' : '展开'}来源「${label}」`}
+          aria-label={t('{0}来源「{1}」', [open ? t('收起') : t('展开'), label])}
           onClick={() => {
             if (typeof options.onToggleExpanded === 'function') options.onToggleExpanded(key)
           }}
@@ -353,9 +354,9 @@ function sourceGroupNode(group, options, index) {
           <span className="smp-skillSourceLabel">{label}</span>
           <span
             className="smp-skillCount"
-            title={`已启用 ${enabledCount} 个，共 ${skills.length} 个`}
+            title={t('已启用 {0} 个，共 {1} 个', [enabledCount, skills.length])}
           >{`${enabledCount}/${skills.length}`}</span>
-          {readonly ? <span className="smp-tag" data-tone="neutral">只读</span> : null}
+          {readonly ? <span className="smp-tag" data-tone="neutral">{t('只读')}</span> : null}
         </button>
         {/* 来源开关是另一个动作，不能连带触发折叠。 */}
         {exists ? (
@@ -366,7 +367,7 @@ function sourceGroupNode(group, options, index) {
             {switchNode({
               kind: 'source',
               on: sourceOn,
-              label: `${sourceOn ? '停用' : '启用'}来源「${label}」`,
+              label: t('{0}来源「{1}」', [sourceOn ? t('停用') : t('启用'), label]),
               disabled: options.busy,
               onToggle: (next) => {
                 // 传**策略键**：项目级来源在多个工作区之间共用结构 key，按它存会让
@@ -383,10 +384,10 @@ function sourceGroupNode(group, options, index) {
         <div className="smp-groupSub smp-skillSourcePath" key="path">{path}</div>
       ) : null}
       {exists ? null : (
-        <p className="smp-note smp-skillMissing" key="missing">来源目录不存在，没有可启停的技能。</p>
+        <p className="smp-note smp-skillMissing" key="missing">{t('来源目录不存在，没有可启停的技能。')}</p>
       )}
       {open && skills.length === 0 && exists ? (
-        <p className="smp-note" key="none">这个来源下还没有技能。</p>
+        <p className="smp-note" key="none">{t('这个来源下还没有技能。')}</p>
       ) : null}
       {open && skills.length > 0 ? (
         <ul className="smp-cards smp-skillList" key="list" data-off={sourceOn ? 'false' : 'true'}>
@@ -465,12 +466,12 @@ export function skillSourceGroupsNode({
     return (
       <div className="smp-skillSources" key="skillSources">
         <>
-          <p className="smp-empty">{emptyHint === '' ? '还没有发现任何技能' : emptyHint}</p>
+          <p className="smp-empty">{emptyHint === '' ? t('还没有发现任何技能') : emptyHint}</p>
           {emptyHint === '' || typeof onResetFilters !== 'function' ? null : (
             <button
               className="smp-button" data-variant="outline" type="button"
               onClick={() => { onResetFilters() }}
-            >清除筛选</button>
+            >{t('清除筛选')}</button>
           )}
         </>
       </div>

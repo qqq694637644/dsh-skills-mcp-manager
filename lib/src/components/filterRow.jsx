@@ -9,6 +9,7 @@
  * workspace is chosen in the add dialog). Keeping the selector would have meant a control that
  * filters nothing.
  */
+import { t } from '../i18n.js'
 
 /** Build the filter row. */
 export function filterRow({ query, onQuery, placeholder, actions = null }) {
@@ -29,7 +30,7 @@ export function filterRow({ query, onQuery, placeholder, actions = null }) {
           /* The input has no visible <label> on this compact row, so the placeholder is
              the only text it carries: mirror it into `aria-label` or the field is
              announced as an unlabelled text box. */
-          aria-label={placeholder || '搜索'}
+          aria-label={placeholder || t('搜索')}
           placeholder={placeholder}
           value={query}
           onChange={(event) => onQuery(event.target.value)}

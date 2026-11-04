@@ -4,6 +4,7 @@
  *
  * No footer button: the modal already carries a close control in its header.
  */
+import { t } from '../i18n.js'
 export function skillPreviewDialog({ skill, body = '', pending = false, primitives, onClose }) {
   if (skill === null || skill === undefined) return null
   const Modal = primitives?.Modal
@@ -13,14 +14,14 @@ export function skillPreviewDialog({ skill, body = '', pending = false, primitiv
     <Modal
       open
       onClose={onClose}
-      title={`${skill.name ?? ''}（${tag}）`}
-      closeLabel="关闭"
+      title={t('{0}（{1}）', [skill.name ?? '', tag])}
+      closeLabel={t("关闭")}
       description={
         <div className="smp-previewMeta" key="meta">
           {String(skill.description ?? '').trim() !== '' ? (
             <div className="smp-previewDesc" key="desc">{skill.description}</div>
           ) : null}
-          {skill.path ? <div className="smp-previewPath" key="path">{`文件：${skill.path}`}</div> : null}
+          {skill.path ? <div className="smp-previewPath" key="path">{t('文件：{0}', [skill.path])}</div> : null}
         </div>
       }
     >
@@ -28,7 +29,7 @@ export function skillPreviewDialog({ skill, body = '', pending = false, primitiv
         {/* A <div> with pre-wrap, not <pre>: <pre> refuses to shrink below its
             longest unbreakable run, which pushed lines past the right padding. */}
         <div className="smp-preview" key="body">
-          {pending ? '读取中…' : (body !== '' ? body : (skill.body ?? ''))}
+          {pending ? t('读取中…') : (body !== '' ? body : (skill.body ?? ''))}
         </div>
       </div>
     </Modal>
