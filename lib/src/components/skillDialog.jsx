@@ -10,7 +10,8 @@ import { t } from '../i18n.js'
  * conflated three *different* questions, and the list grew a second entry for every workspace:
  *
  *   1. **层级** — 全局（所有工作区都用）还是项目级（只在某个工作区）
- *   2. **工作区** — 项目级写到哪一个（从注册表选，也可以手填绝对路径，与 MCP 的写法一致）
+ *   2. **工作区 / 项目根** — 项目级写到哪一个 Git 项目根（同一仓库下的多个 DSH 工作区共享一项；
+ *      从注册表选，也可以手填绝对路径，与 MCP 的写法一致）
  *   3. **目录** — `.dsh/skills` 还是 `.agents/skills`（DSH 的 provider 两个都读）
  *
  * Splitting them means the dialog stays three fields no matter how many workspaces exist, and

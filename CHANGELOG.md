@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — 修复 DSH Workspace 与 Git 项目根混用
+
+- `/runtime.workspaces` 保留注册表的 `sessionIds`；`currentWorkspace` 按当前 live Agent 的 Session ID
+  匹配工作区，不再取 `agents.values()[0]`，也不再把 Git 根目录当成工作区路径。多个工作区同时有
+  live Session 时不猜默认项，避免把新建 MCP / Skill 写到错误工作区。
+- Skills 仍按 DSH 官方约定使用最近 `.git` 祖先作为真实存储根，但 UI 按 `workspace.root` 反查 DSH
+  工作区名称。同一 Git 仓库里的多个工作区合并为一个真实技能范围，并显示 `首个工作区 (+N)`；悬停
+  可看到全部工作区路径与实际 Git 项目根。MCP 继续使用原始 Workspace Path。
+- Windows 路径标签同时识别 `\\` 与 `/`，技能落盘路径按 Windows 分隔符显示。
+- 移除项目扫描静默截断到 12 个根目录的限制，避免注册工作区较多时后续项目技能消失。
+- 新增 Host 与 Client 回归测试：多 Agent / 多 Workspace、SessionId 归属、旧 Host cwd 回退、同一 Git
+  仓库下 `bbbbbbb` / `RRR` / `attack` 等多个工作区的显示与共享技能根。
+
 ## 0.6.5 — Host 错误码化：六种语言的错误/结果消息
 
 > 0.6.4 的 i18n 只覆盖客户端静态文案；Host 生成的错误/结果仍是中文。这一版把 Host 响应面

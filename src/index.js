@@ -47,6 +47,7 @@ import { installCatalogSkill, listClawHub, searchClawHub, searchSkillsSh } from 
 import { registerSkillCatalogRoute } from './skills/catalog-route.js'
 import { checkForUpdate } from './update.js'
 import { serverMountConfig, setMountClient, workingDirectoryOf } from './project/mount.js'
+import { currentWorkspacePath } from './project/workspaces.js'
 import { GLOBAL_SCOPE, projectServersFor, serverRows, serverSetKey } from './mcp/serverRows.js'
 import { readMcpRowsFromPatch } from './patch/readRows.js'
 import { connectionDraftOf } from './mcp/connection.js'
@@ -308,6 +309,12 @@ function configuredWorkspaces(ctx) {
       id: String(workspace?.id ?? ''),
       title: String(workspace?.title ?? ''),
       path: String(workspace?.path ?? ''),
+      // This is the registry's authoritative Workspace -> Session membership.
+      // It must survive the runtime projection so currentWorkspace is not
+      // guessed from whichever Agent happened to be inserted first.
+      ...(Array.isArray(workspace?.sessionIds)
+        ? { sessionIds: workspace.sessionIds.map((id) => String(id ?? '')).filter((id) => id !== '') }
+        : {}),
     })).filter((workspace) => workspace.path !== '')))
   } catch (error) {
     // Distinguish "no workspaces" from "the registry blew up".
@@ -1588,7 +1595,7 @@ export function apply(ctx, config) {
 
   /** 重新计算治理视图；失败时保留可读的错误而不是把整页打空。 */
   const refreshGovernance = async (projectRoots) => {
-    const roots = Array.isArray(projectRoots) ? projectRoots.slice(0, 12) : []
+    const roots = Array.isArray(projectRoots) ? projectRoots : []
     const dshHome = resolveDshHome()
     try {
       const snapshot = await governedSkills({ projectRoots: roots, dshHome, agentsHome: agentsHome() })
@@ -1605,7 +1612,7 @@ export function apply(ctx, config) {
   }
 
   const refreshDiscovered = async (projectRoots) => {
-    const roots = Array.isArray(projectRoots) ? projectRoots.slice(0, 12) : []
+    const roots = Array.isArray(projectRoots) ? projectRoots : []
     try {
       discoveredSkills = await discoverSkills({
         projectRoots: roots,
@@ -1727,13 +1734,13 @@ export function apply(ctx, config) {
     }
 
     /**
-     * 工作区投影到**项目根**。
+     * Preserve every DSH Workspace record and attach its separate Git project root.
      *
-     * 写盘与扫描都用 `projectRootOf()` 归一化（会话开在 monorepo 的 `packages/x` 时，技能落到
-     * 仓库根下的 `.agents/skills`），而这里原来直传注册表里的原始路径 —— 于是面板「将写入 …」
-     * 展示的位置和文件真正落盘的位置不一致，用户按提示去找会找不到。
-     *
-     * 归一化后同仓库的多个子目录折叠成一项，这正是「一个项目一个根」的语义。
+     * `path` is the registry identity used by MCP scopes and session membership.
+     * `root` is only the native DSH skill-storage identity: its filesystem provider
+     * intentionally walks to the nearest `.git` ancestor. Multiple Workspaces can
+     * therefore share one `root`; the Client aggregates those labels while keeping
+     * the underlying Workspace records distinct.
      */
     const spaces = (() => {
       const seen = new Set()
@@ -1759,7 +1766,9 @@ export function apply(ctx, config) {
       }
       return out
     })()
-    const cwds = [...agents.values()].map((entry) => entry.cwd).filter((cwd) => typeof cwd === 'string' && cwd !== '')
+    // Session IDs are an internal Host join key. The browser needs workspace
+    // identity/path/root, not the registry's full session-membership ledger.
+    const publicSpaces = spaces.map(({ sessionIds: _sessionIds, ...workspace }) => workspace)
     const skillDirs = {
       userDsh: join(resolveDshHome(), 'skills'),
       userAgents: join(agentsHome(), 'skills'),
@@ -1795,8 +1804,11 @@ export function apply(ctx, config) {
       // 技能治理：来源分组 + 每个技能的启停状态（面板的「来源」视图读它）。
       skillGovernance,
       skillDirs,
-      workspaces: spaces,
-      currentWorkspace: cwds.length > 0 ? (projectRootOf(cwds[0]) || cwds[0]) : '',
+      workspaces: publicSpaces,
+      // Workspace path and Git project root are deliberately different fields.
+      // Resolve the active workspace from the registry's SessionId ledger; do
+      // not use agents.values()[0] or projectRootOf(cwd) as a workspace identity.
+      currentWorkspace: currentWorkspacePath(spaces, [...agents.keys()]),
       filter,
       probe: probeState,
       oauth: {

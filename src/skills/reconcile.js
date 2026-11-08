@@ -13,7 +13,7 @@ import { NAME, LEGACY_NAME } from '../identity.js'
 
 const stateFile = () => join(dshHome(), `${NAME}.state.json`)
 
-/** Nearest ancestor holding `.git` — the same project-root rule as the skill provider. */
+/** Nearest ancestor holding `.git` — only the DSH project-skill storage root, never a Workspace identity. */
 export function projectRootOf(dir) {
   let current = resolve(dir)
   for (;;) {
