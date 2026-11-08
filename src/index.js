@@ -17,7 +17,7 @@
  * @module dsh-skills-mcp-manager
  */
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import z from '@deepseek-ai/schemastery'
@@ -37,7 +37,8 @@ import { registerSkillReadRoute } from './skills/read.js'
 import { governedSkills } from './skills/governance.js'
 import { createGovernanceRegistrar, registerGovernanceProvider } from './skills/provider.js'
 import { registerGovernanceRoute } from './skills/governance-route.js'
-import { assignCategory, createCategory, deleteCategory, managerStatePath, readManagerState, renameCategory, setCategoryEnabled, setSkillEnabled, setSourceEnabled, writeManagerState } from './skills/state.js'
+import { assignCategory, createCategory, deleteCategory, managerHomePath, managerStatePath, readManagerState, renameCategory, setCategoryEnabled, setSkillEnabled, setSourceEnabled, writeManagerState } from './skills/state.js'
+import { buildWorkspaceSkillDiagnostics } from './skills/diagnostics.js'
 import { dropTrashRecord, moveSkillToTrash, purgeFromTrash, restoreFromTrash } from './skills/trash.js'
 import { dropRepositoryCache, scanAndCacheRepository } from './skills/repositories.js'
 import { dropInstall, installSkill, installSkillEntry, previewInstall, rollbackInstalled, updateInstalled } from './skills/repository-install.js'
@@ -1426,15 +1427,54 @@ export function apply(ctx, config) {
   const PROVIDER_SNAPSHOT_TTL_MS = 1000
   let cachedSnapshot = null
   let cachedAt = 0
+  let lastWorkspaceDiagnosticsSignature = ''
+  let workspaceDiagnosticsWrite = Promise.resolve()
   const invalidateSnapshotCache = () => { cachedSnapshot = null; cachedAt = 0 }
+  const recordWorkspaceSkillDiagnostics = (snapshot, projectRoots) => {
+    const workspaces = configuredWorkspaces(ctx)
+    const report = buildWorkspaceSkillDiagnostics({
+      snapshot,
+      workspaces,
+      projectRoots,
+      currentWorkspace: currentWorkspacePath(workspaces, [...agents.keys()]),
+      liveAgentCount: agents.size,
+    })
+    const signature = JSON.stringify({
+      currentWorkspace: report.currentWorkspace,
+      liveAgentCount: report.liveAgentCount,
+      workspaces: report.workspaces,
+      projectRoots: report.projectRoots,
+      sources: report.sources,
+      scanError: report.scanError,
+    })
+    if (signature === lastWorkspaceDiagnosticsSignature) return workspaceDiagnosticsWrite
+    workspaceDiagnosticsWrite = workspaceDiagnosticsWrite.then(async () => {
+      if (signature === lastWorkspaceDiagnosticsSignature) return
+      const directory = managerHomePath(resolveDshHome())
+      const path = join(directory, 'workspace-skill-scan.json')
+      try {
+        await mkdir(directory, { recursive: true })
+        await writeFileAtomic(path, JSON.stringify(report, null, 2), {})
+        lastWorkspaceDiagnosticsSignature = signature
+        ctx.logger.info?.('dsh-skills-mcp-manager: workspace skill diagnostics written to %s', path)
+      } catch (error) {
+        ctx.logger.warn('dsh-skills-mcp-manager: could not write workspace skill diagnostics: %s', String(error?.message ?? error))
+      }
+    }).catch((error) => {
+      ctx.logger.warn('dsh-skills-mcp-manager: workspace skill diagnostics failed: %s', String(error?.message ?? error))
+    })
+    return workspaceDiagnosticsWrite
+  }
   const governanceSnapshot = async () => {
     const now = Date.now()
     if (cachedSnapshot !== null && now - cachedAt < PROVIDER_SNAPSHOT_TTL_MS) return cachedSnapshot
+    const projectRoots = governanceProjectRoots()
     const fresh = await governedSkills({
-      projectRoots: governanceProjectRoots(),
+      projectRoots,
       dshHome: resolveDshHome(),
       agentsHome: agentsHome(),
     })
+    await recordWorkspaceSkillDiagnostics(fresh, projectRoots)
     cachedSnapshot = fresh
     cachedAt = now
     return fresh
@@ -1623,6 +1663,7 @@ export function apply(ctx, config) {
     try {
       const snapshot = await governedSkills({ projectRoots: roots, dshHome, agentsHome: agentsHome() })
       skillGovernance = { ...snapshot, providerInstalled: governanceProviderInstalled }
+      await recordWorkspaceSkillDiagnostics(snapshot, roots)
     } catch (error) {
       skillGovernance = {
         sources: [], skills: [],
@@ -1630,6 +1671,7 @@ export function apply(ctx, config) {
         statePath: managerStatePath(dshHome),
         providerInstalled: governanceProviderInstalled,
       }
+      await recordWorkspaceSkillDiagnostics(skillGovernance, roots)
       if (process.env.SMP_DEBUG) console.error('[dsh-skills-mcp-manager] governance scan failed', error)
     }
   }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — 项目技能严格锁定 DSH Workspace
+## 0.6.6 — 项目技能严格锁定 DSH Workspace + 扫描诊断
 
 - `/runtime.workspaces` 保留注册表的 `sessionIds`；`currentWorkspace` 按当前 live Agent 的 Session ID
   匹配工作区，不再取 `agents.values()[0]`，也不再把 Git 根目录当成工作区路径。多个工作区同时有
@@ -17,6 +17,10 @@
   手动选择按 Workspace path 区分；清除筛选不再回退到注册表中的第一个项目。
 - 新增回归测试覆盖同一 Git checkout 下的多个 Workspace、嵌套 Workspace 的独立技能目录、
   项目技能写入路径与 Agent 级技能隔离。
+- 新增 DSH_HOME 下的 workspace-skill-scan.json 诊断快照：记录 Host 当前 Workspace、注册表路径、
+  实际扫描根、来源目录是否存在、技能文件名/数量与扫描错误；不读取或记录 SKILL.md 正文。
+  仅当诊断内容变化时更新，并在 DSH 日志中记录诊断文件路径。
+- 升级包版本至 0.6.6，避免同版本本地 tarball 被 pnpm 当作已安装包而复用旧构建产物。
 
 ## 0.6.5 — Host 错误码化：六种语言的错误/结果消息
 
