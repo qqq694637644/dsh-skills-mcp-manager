@@ -5,7 +5,7 @@
  * one — and removes directories that are no longer configured.
  */
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { dshHome } from '../runtime/env.js'
@@ -13,15 +13,9 @@ import { NAME, LEGACY_NAME } from '../identity.js'
 
 const stateFile = () => join(dshHome(), `${NAME}.state.json`)
 
-/** Nearest ancestor holding `.git` — the same project-root rule as the skill provider. */
+/** A DSH Workspace path is the project-skill root; never promote it to a parent Git checkout. */
 export function projectRootOf(dir) {
-  let current = resolve(dir)
-  for (;;) {
-    if (existsSync(join(current, '.git'))) return current
-    const parent = dirname(current)
-    if (parent === current) return resolve(dir)
-    current = parent
-  }
+  return resolve(dir)
 }
 
 /** `~/.agents`, honoured overridable the same way DSH does it. */

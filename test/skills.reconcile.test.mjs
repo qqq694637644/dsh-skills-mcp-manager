@@ -41,6 +41,15 @@ test('scopeRoot：id 选根 —— agents 走 DSH_AGENTS_HOME，项目级两个�
 })
 
 
+test('scopeRoot：嵌套在 Git 仓库里的 Workspace 仍使用自己的项目技能目录', () => {
+  const checkout = mkdtempSync(join(tmpdir(), 'smp-git-checkout-'))
+  const workspace = join(checkout, 'data', 'workspaces', 'bbbbbbb')
+  mkdirSync(join(checkout, '.git'), { recursive: true })
+  mkdirSync(workspace, { recursive: true })
+  assert.equal(scopeRoot(workspace, 'dsh'), join(workspace, '.dsh', 'skills'))
+  assert.equal(scopeRoot(workspace, 'agents'), join(workspace, '.agents', 'skills'))
+})
+
 /*
  * `reconcileSkills` 在 0.5.32 被删除：它从未被调用，却会按状态文件里的**任意 dirname**
  * 递归删除目录 —— 一个不会触发的函数带着一个误用即毁文件的实现。它对应的 4 条用例一并删除；
