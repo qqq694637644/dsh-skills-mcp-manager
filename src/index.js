@@ -29,7 +29,7 @@ import { applyRowOp, migratePanelConfig, setPatchIO } from './patch/apply.js'
 import { scanImportSource } from './import/scan.js'
 import { registerImportRoute } from './import/route.js'
 import { beat } from './diagnostics/heartbeat.js'
-import { agentsHome, projectRootOf } from './skills/reconcile.js'
+import { agentsHome } from './skills/reconcile.js'
 import { bodyOf, discoverSkills } from './skills/discover.js'
 import { createSkill, deleteSkill, renameSkill, updateSkill, writableRoots } from './skills/write.js'
 import { registerSkillRoute } from './skills/route.js'
@@ -308,7 +308,7 @@ function configuredWorkspaces(ctx) {
     return JSON.parse(JSON.stringify(registry.list().map((workspace) => ({
       id: String(workspace?.id ?? ''),
       title: String(workspace?.title ?? ''),
-      path: String(workspace?.path ?? ''),
+      path: resolve(String(workspace?.path ?? '')),
       // This is the registry's authoritative Workspace -> Session membership.
       // It must survive the runtime projection so currentWorkspace is not
       // guessed from whichever Agent happened to be inserted first.
@@ -1392,17 +1392,25 @@ export function apply(ctx, config) {
   /** Live agents, with the project servers mounted into each one's scope. */
   const agents = new Map()
 
-  /** 当前所有项目根（活着的 agent 的 cwd + 已登记工作区）：磁盘扫描与治理扫描共用一份。 */
+  /** Each registered DSH Workspace is an independent project-skill root. */
   const governanceProjectRoots = () => {
     const roots = []
+    const seen = new Set()
     const add = (dir) => {
       if (typeof dir !== 'string' || dir === '') return
-      const root = projectRootOf(dir)
-      if (!roots.includes(root)) roots.push(root)
+      const key = process.platform === 'win32'
+        ? dir.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase()
+        : dir.replace(/\\/g, '/').replace(/\/+$/, '')
+      if (key === '' || seen.has(key)) return
+      seen.add(key)
+      roots.push(dir)
     }
-    for (const entry of agents.values()) add(entry.cwd)
-    for (const workspace of configuredWorkspaces(ctx)) {
-      add(typeof workspace === 'string' ? workspace : workspace?.path)
+    const workspaces = configuredWorkspaces(ctx)
+    if (workspaces.length > 0) {
+      for (const workspace of workspaces) add(String(workspace?.path ?? ''))
+    } else {
+      // Older hosts may not expose the registry; keep the agent cwd as-is.
+      for (const entry of agents.values()) add(String(entry?.cwd ?? ''))
     }
     return roots
   }
@@ -1431,6 +1439,20 @@ export function apply(ctx, config) {
     cachedAt = now
     return fresh
   }
+  const globalGovernanceSnapshot = async () => {
+    const snapshot = await governanceSnapshot()
+    return { ...snapshot, skills: snapshot.skills.filter((skill) => skill.scope === 'global') }
+  }
+  const governanceSnapshotForAgent = async (agent) => {
+    const snapshot = await governanceSnapshot()
+    const workspacePath = currentWorkspacePath(configuredWorkspaces(ctx), [agent])
+    return {
+      ...snapshot,
+      skills: workspacePath === ''
+        ? []
+        : snapshot.skills.filter((skill) => skill.scope === workspacePath),
+    }
+  }
 
   /**
    * 技能治理 provider 的**分作用域**注册器（root + 每个 agent 的 scope）。
@@ -1442,6 +1464,7 @@ export function apply(ctx, config) {
    */
   const governance = createGovernanceRegistrar({
     snapshot: governanceSnapshot,
+    snapshotForAgent: governanceSnapshotForAgent,
     log: (message) => ctx.logger.warn('dsh-skills-mcp-manager: %s', message),
   })
 
@@ -1733,15 +1756,7 @@ export function apply(ctx, config) {
       })),
     }
 
-    /**
-     * Preserve every DSH Workspace record and attach its separate Git project root.
-     *
-     * `path` is the registry identity used by MCP scopes and session membership.
-     * `root` is only the native DSH skill-storage identity: its filesystem provider
-     * intentionally walks to the nearest `.git` ancestor. Multiple Workspaces can
-     * therefore share one `root`; the Client aggregates those labels while keeping
-     * the underlying Workspace records distinct.
-     */
+    // A Workspace path is the project-skill root. Never merge it with a Git ancestor.
     const spaces = (() => {
       const seen = new Set()
       const out = []
@@ -1750,24 +1765,11 @@ export function apply(ctx, config) {
         if (raw === '') continue
         if (seen.has(raw)) continue
         seen.add(raw)
-        /**
-         * 两个字段各有用途，**不能互相替代**：
-         *
-         *   · `path` 保留注册表原值 —— MCP 的「作用域」下拉要能选到仓库子目录
-         *     （`packages/web` 的项目级服务器只应对那一个子目录生效）；
-         *   · `root` 是技能写盘/扫描实际用的项目根（`projectRootOf` 归一化），技能相关的
-         *     落点与展示都用它，否则「将写入 …」与真实位置不一致。
-         *
-         * 之前为了修后者把 `path` 也换成 root 并按 root 去重，副作用是子目录作用域消失、
-         * 同仓库两个工作区被合并 —— 两者都是真实用法，所以改成"两个字段并存"。
-         */
-        const root = projectRootOf(raw) || raw
-        out.push({ ...workspace, path: raw, root, agentsSkillsDir: join(root, '.agents', 'skills') })
+        out.push({ ...workspace, path: raw, agentsSkillsDir: join(raw, '.agents', 'skills') })
       }
       return out
     })()
-    // Session IDs are an internal Host join key. The browser needs workspace
-    // identity/path/root, not the registry's full session-membership ledger.
+    // Session IDs are an internal Host join key; the browser only needs Workspace paths.
     const publicSpaces = spaces.map(({ sessionIds: _sessionIds, ...workspace }) => workspace)
     const skillDirs = {
       userDsh: join(resolveDshHome(), 'skills'),
@@ -1805,9 +1807,7 @@ export function apply(ctx, config) {
       skillGovernance,
       skillDirs,
       workspaces: publicSpaces,
-      // Workspace path and Git project root are deliberately different fields.
-      // Resolve the active workspace from the registry's SessionId ledger; do
-      // not use agents.values()[0] or projectRootOf(cwd) as a workspace identity.
+      // Workspace path is also the project-skill scope; never promote it to a Git ancestor.
       currentWorkspace: currentWorkspacePath(spaces, [...agents.keys()]),
       filter,
       probe: probeState,
@@ -1887,7 +1887,7 @@ export function apply(ctx, config) {
     const provider = registerGovernanceProvider(skillsCtx, {
       // 快照失败时留一行日志：代理会沿用上一次结果、不抛给 DSH —— 但用户得能查到原因。
       log: (message) => ctx.logger.warn('dsh-skills-mcp-manager: %s', message),
-      snapshot: governanceSnapshot,
+      snapshot: globalGovernanceSnapshot,
     })
     governance.trackRoot(provider)
     governanceProviderInstalled = provider.installed
@@ -2106,20 +2106,19 @@ export function apply(ctx, config) {
   // A skill is a directory on disk and nothing else. The four roots are the whole model:
   // create/update/rename/delete go straight to `SKILL.md`, and the list is the disk scan.
   /**
-   * 写盘用的项目根。
+   * 写盘用的 Workspace path。
    *
-   * 客户端传来的 `project` 是**原样**用它当写盘根的：工作区本身在一个 git 仓库的子目录里时，
-   * 技能会被装进 `sub/.agents/skills`，而扫描用 `projectRootOf()` 归到仓库根 —— 面板和模型
-   * 都永远看不到它；反过来它也能往任意可写目录里建 `.agents/skills`。
+    * 客户端传来的 project 必须是已存在的 Workspace 目录。技能扫描、列表和写盘都使用同一个路径。
    *
-   * 归一化到项目根并校验存在，让"写到哪里"与"从哪里扫"用同一套规矩。
+    * 只做绝对路径归一化并校验目录存在；不向上寻找 Git 根。
    */
-  const writableProjectRoot = (project) => {
+  const writableWorkspacePath = (project) => {
     const raw = String(project ?? '')
     if (raw === '') return ''
-    const root = projectRootOf(raw)
+    const root = resolve(raw)
     if (root === '') throw new Error(`目标工作区路径无效：${raw}`)
     if (!existsSync(root)) throw new Error(`目标工作区不存在：${root}`)
+    if (!statSync(root).isDirectory()) throw new Error('目标工作区不是目录：' + root)
     return root
   }
 
@@ -2131,12 +2130,11 @@ export function apply(ctx, config) {
       dshHome: resolveDshHome(),
       agentsHome: agentsHome(),
       /**
-       * 与安装/导入同一条规矩：归一化到项目根**并校验存在**。
+        * 与安装/导入同一条规矩：使用所选 Workspace path 并校验存在。
        *
-       * 只做 `projectRootOf` 的话，`C:/` 这样的值会让我们在根上建 `.dsh/skills/<name>`；
-       * 校验存在性之后，陈旧的已删工作区路径会得到一个可读的错误，而不是静默写到别处。
+        * 校验存在性之后，陈旧的已删工作区路径会得到一个可读的错误，而不是静默写到别处。
        */
-      projectRoot: writableProjectRoot(skillReq?.project),
+      projectRoot: String(skillReq?.scope ?? '') === 'project' ? writableWorkspacePath(skillReq?.project) : '',
     })
     const target = roots.find((entry) => entry.scope === skillReq?.scope && entry.id === skillReq?.id)
     let result
@@ -2180,7 +2178,9 @@ export function apply(ctx, config) {
           .map((entry) => entry.scope)
           .filter((scope) => typeof scope === 'string' && scope !== '' && scope !== 'global'))]
         await refreshDiscovered([...new Set([
-          ...roots.map((entry) => projectRootOf(entry.dir)),
+          ...(String(skillReq?.scope ?? '') === 'project' && String(skillReq?.project ?? '') !== ''
+            ? [String(skillReq.project)]
+            : []),
           ...projectScopes,
         ])].filter((root) => typeof root === 'string' && root !== ''))
       } catch (error) {
@@ -2241,9 +2241,7 @@ export function apply(ctx, config) {
     }
     if (!isKnown()) {
       try {
-        const extra = []
-        for (const agent of agents.values()) extra.push(projectRootOf(agent.cwd))
-        for (const workspace of configuredWorkspaces(ctx)) extra.push(projectRootOf(String(workspace?.path ?? workspace?.dir ?? '')))
+        const extra = governanceProjectRoots()
         const scopes = discoveredSkills.map((entry) => entry.scope).filter((scope) => typeof scope === 'string' && scope !== '' && scope !== 'global')
         const nextRoots = [...new Set([...scopes, ...extra])].filter((root) => typeof root === 'string' && root !== '')
         // `refreshDiscovered` 末尾会顺带刷新治理快照，所以一次重扫同时补上两份投影。
@@ -2411,7 +2409,7 @@ export function apply(ctx, config) {
         if (skill === undefined) return errorResponse('repo-skill-not-in-repo')
         const done = await installSkill({
           dshHome, agentsHome: agentsHome(), repo, skill,
-          destination: { scope: request.scope, destId: request.destId, project: writableProjectRoot(request.project) },
+          destination: { scope: request.scope, destId: request.destId, project: writableWorkspacePath(request.project) },
         })
         if (done.ok !== true) return done
         state.installs = [
@@ -2539,7 +2537,7 @@ export function apply(ctx, config) {
             catalog: request.catalog, source: request.source, skillId: request.skillId,
             owner: request.owner, slug: request.slug,
           },
-          destination: { scope: request.scope, destId: request.destId, project: writableProjectRoot(request.project) },
+          destination: { scope: request.scope, destId: request.destId, project: writableWorkspacePath(request.project) },
         })
         if (done.ok !== true) return done
         // 写盘后必须让 provider 的目录缓存失效：否则技能在面板里可见，模型侧却要等到
@@ -2566,7 +2564,7 @@ export function apply(ctx, config) {
       const common = {
         dshHome,
         agentsHome: agentsHome(),
-        destination: { scope: request.scope, destId: request.destId, project: writableProjectRoot(request.project) },
+        destination: { scope: request.scope, destId: request.destId, project: writableWorkspacePath(request.project) },
         name: request.name,
       }
       const op = String(request.op ?? '')

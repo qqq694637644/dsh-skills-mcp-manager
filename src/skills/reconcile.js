@@ -5,24 +5,13 @@
  * one — and removes directories that are no longer configured.
  */
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { dshHome } from '../runtime/env.js'
 import { NAME, LEGACY_NAME } from '../identity.js'
 
 const stateFile = () => join(dshHome(), `${NAME}.state.json`)
-
-/** Nearest ancestor holding `.git` — only the DSH project-skill storage root, never a Workspace identity. */
-export function projectRootOf(dir) {
-  let current = resolve(dir)
-  for (;;) {
-    if (existsSync(join(current, '.git'))) return current
-    const parent = dirname(current)
-    if (parent === current) return resolve(dir)
-    current = parent
-  }
-}
 
 /** `~/.agents`, honoured overridable the same way DSH does it. */
 export function agentsHome() {
@@ -45,7 +34,8 @@ export function scopeRoot(scope, id = 'dsh') {
   if (scope === 'global' || scope === '' || scope === undefined) {
     return join(useAgents ? agentsHome() : dshHome(), 'skills')
   }
-  return join(projectRootOf(scope), useAgents ? '.agents' : '.dsh', 'skills')
+  // The DSH Workspace path is the project boundary; sibling Workspaces stay separate.
+  return join(resolve(scope), useAgents ? '.agents' : '.dsh', 'skills')
 }
 
 /** Frontmatter plus body, exactly what the filesystem skill provider parses. */

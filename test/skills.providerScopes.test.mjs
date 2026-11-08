@@ -102,7 +102,7 @@ const disabledSnapshot = () => ({
   ],
 })
 
-function harness({ snapshot = disabledSnapshot } = {}) {
+function harness({ snapshot = disabledSnapshot, snapshotForAgent = null } = {}) {
   const skills = fakeSkills()
   const fixture = {
     skillsService: skills.service,
@@ -113,6 +113,7 @@ function harness({ snapshot = disabledSnapshot } = {}) {
   }
   const registrar = createGovernanceRegistrar({
     snapshot,
+    snapshotForAgent,
     log: (message) => fixture.logs.push(message),
   })
   return { registrar, fixture }
@@ -147,6 +148,36 @@ test('attachAgent：每个 agent 都在**自己的 ctx** 上注册，且候选�
   assert.deepEqual(enabled.invocation, { modelInvocable: true, userInvocable: true })
   assert.equal(enabled.description, '技能：claude-only', '空描述要有兜底（宿主校验要求非空）')
   assert.equal(enabled.rank, policyRank('claude'))
+})
+
+test('snapshotForAgent：每个 Agent 只收到自己 Workspace 的项目技能', async () => {
+  const all = () => ({
+    skills: [
+      { name: 'global-skill', description: '全局', source: 'user-dsh', rank: policyRank('user-dsh'), enabled: true, path: '/global/SKILL.md', scope: 'global' },
+      { name: 'bbbbbbb-skill', description: 'bbbbbbb', source: 'project-dsh', rank: policyRank('project-dsh'), enabled: true, path: '/bbbbbbb/SKILL.md', scope: '/workspaces/bbbbbbb' },
+      { name: 'attack-skill', description: 'attack', source: 'project-dsh', rank: policyRank('project-dsh'), enabled: true, path: '/attack/SKILL.md', scope: '/workspaces/attack' },
+    ],
+  })
+  const snapshotForAgent = async (agent) => {
+    const snapshot = all()
+    return {
+      ...snapshot,
+      skills: snapshot.skills.filter((skill) => skill.scope === agent.workspacePath),
+    }
+  }
+  const { registrar, fixture } = harness({ snapshot: all, snapshotForAgent })
+  const bbbbbbb = makeAgent(fixture)
+  const attack = makeAgent(fixture)
+  bbbbbbb.workspacePath = '/workspaces/bbbbbbb'
+  attack.workspacePath = '/workspaces/attack'
+
+  registrar.attachAgent(bbbbbbb)
+  registrar.attachAgent(attack)
+  const bList = await fixture.registrations[0].provider.list()
+  const attackList = await fixture.registrations[1].provider.list()
+
+  assert.deepEqual(bList.map((skill) => skill.name), ['bbbbbbb-skill'])
+  assert.deepEqual(attackList.map((skill) => skill.name), ['attack-skill'])
 })
 
 test('后创建的 agent 通过 attachAgent 注册；重复 attach 不重复注册', () => {
@@ -285,5 +316,8 @@ test('index.js 的接线没有丢（静态检查三处生命周期调用）', as
   assert.match(source, /governance\.trackRoot\(provider\)/, 'root 那份仍要注册（global 层兜底）')
   assert.match(source, /governance\.invalidate\(\)/, '面板改策略后必须让所有层失效')
   assert.match(source, /governance\.disposeAll\(\)/, '插件卸载时必须释放所有 agent 注册')
-  assert.match(source, /governanceSnapshot/, 'root 与 agent provider 共用同一份快照/TTL 缓存')
+  assert.match(source, /snapshotForAgent:\s*governanceSnapshotForAgent/, 'agent provider 必须按所属 Workspace 过滤')
+  assert.match(source, /snapshot:\s*globalGovernanceSnapshot/, 'root provider 只提供全局技能')
+  assert.match(source, /currentWorkspacePath\(configuredWorkspaces\(ctx\), \[agent\]\)/, '每个 agent 用自己的 Workspace membership')
+  assert.match(source, /governanceSnapshot/, '各作用域共用同一份底层扫描/TTL 缓存')
 })

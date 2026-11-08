@@ -197,9 +197,11 @@ try {
   const discoveredFile = join(home, 'skills', 'smoke-discovered', 'SKILL.md')
   await writeFile(discoveredFile, '---\nname: smoke-discovered\ndescription: 发现通道冒烟\n---\n\n# 发现\n')
   await mkdir(join(stage, 'stagingMarker'), { recursive: true })
-  // A project marker: `projectRootOf` walks up to the nearest ancestor holding `.git`,
-  // so without it a project skill lands in some unrelated ancestor.
+  // The selected Workspace is nested under a Git checkout. Project skills must stay
+  // inside this Workspace, not jump to the parent checkout.
   await mkdir(join(stage, '.git'), { recursive: true })
+  const projectWorkspace = join(stage, 'data', 'workspaces', 'bbbbbbb')
+  await mkdir(projectWorkspace, { recursive: true })
 
   // The profile the Host writes into. `applyRowOp` resolves it through the
   // `profileContext` service, so this is the seam that keeps the smoke off the real profile.
@@ -607,11 +609,11 @@ try {
   // Project scope lands under `<project>/.agents/skills`.
   const projectCreated = await callRoute(SKILLS_PATH, {
     body: {
-      op: 'create', scope: 'project', id: 'agents', project: stage, path: '', name: 'smoke-project-skill',
+      op: 'create', scope: 'project', id: 'agents', project: projectWorkspace, path: '', name: 'smoke-project-skill',
       prevName: '', description: '项目级冒烟', body: '# 项目级\n', nonce: 'smoke-project-create',
     },
   })
-  const projFile = join(stage, '.agents', 'skills', 'smoke-project-skill', 'SKILL.md')
+  const projFile = join(projectWorkspace, '.agents', 'skills', 'smoke-project-skill', 'SKILL.md')
   note(projectCreated.json?.ok === true, `项目级创建成功（HTTP ${projectCreated.status} / ${projectCreated.json?.reason ?? ''}）`)
   note(existsSync(projFile), '项目级技能落盘到 <project>/.agents/skills/<name>/SKILL.md')
 

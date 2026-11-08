@@ -1,17 +1,22 @@
 # Changelog
 
-## Unreleased — 修复 DSH Workspace 与 Git 项目根混用
+## Unreleased — 项目技能严格锁定 DSH Workspace
 
 - `/runtime.workspaces` 保留注册表的 `sessionIds`；`currentWorkspace` 按当前 live Agent 的 Session ID
   匹配工作区，不再取 `agents.values()[0]`，也不再把 Git 根目录当成工作区路径。多个工作区同时有
   live Session 时不猜默认项，避免把新建 MCP / Skill 写到错误工作区。
-- Skills 仍按 DSH 官方约定使用最近 `.git` 祖先作为真实存储根，但 UI 按 `workspace.root` 反查 DSH
-  工作区名称。同一 Git 仓库里的多个工作区合并为一个真实技能范围，并显示 `首个工作区 (+N)`；悬停
-  可看到全部工作区路径与实际 Git 项目根。MCP 继续使用原始 Workspace Path。
+- 项目技能根就是 Workspace 注册表中的精确 `path`；不再向上寻找最近 `.git`，不再合并同仓库、
+  嵌套或兄弟 Workspace。`bbbbbbb`、`rrrr`、`RRR`、`attack` 各自独立。
 - Windows 路径标签同时识别 `\\` 与 `/`，技能落盘路径按 Windows 分隔符显示。
 - 移除项目扫描静默截断到 12 个根目录的限制，避免注册工作区较多时后续项目技能消失。
-- 新增 Host 与 Client 回归测试：多 Agent / 多 Workspace、SessionId 归属、旧 Host cwd 回退、同一 Git
-  仓库下 `bbbbbbb` / `RRR` / `attack` 等多个工作区的显示与共享技能根。
+- 扫描、技能列表筛选、新增/编辑、仓库安装、导入、回收站与恢复全部使用同一个 Workspace path。
+- Host root provider 只提供全局技能；每个 Agent 的 provider 按 SessionId 归属只提供它所在 Workspace
+  的项目技能，不把其它 Workspace 的项目技能混入当前 Agent。
+
+- Skills 页默认跟随唯一确认的 currentWorkspace；若当前 Agent 分属多个 Workspace，则不猜测，默认全局。
+  手动选择按 Workspace path 区分；清除筛选不再回退到注册表中的第一个项目。
+- 新增回归测试覆盖同一 Git checkout 下的多个 Workspace、嵌套 Workspace 的独立技能目录、
+  项目技能写入路径与 Agent 级技能隔离。
 
 ## 0.6.5 — Host 错误码化：六种语言的错误/结果消息
 

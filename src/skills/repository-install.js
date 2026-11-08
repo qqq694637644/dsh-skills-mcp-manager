@@ -45,8 +45,9 @@ export function installIdFor({ scope, destId, project, name }) {
 export function resolveDestination({ dshHome = '', agentsHome = '', destination = {} }) {
   const scope = destination?.scope === 'project' ? 'project' : 'global'
   const destId = destination?.destId === 'agents' ? 'agents' : 'dsh'
-  const projectRoot = scope === 'project' ? String(destination?.project ?? '').trim() : ''
-  if (scope === 'project' && projectRoot === '') return errorResponse('repo-dest-project-missing')
+  const project = String(destination?.project ?? '').trim()
+  if (scope === 'project' && project === '') return errorResponse('repo-dest-project-missing')
+  const projectRoot = scope === 'project' ? resolve(project) : ''
   const roots = writableRoots({ dshHome, agentsHome, projectRoot })
   const root = roots.find((item) => item.scope === scope && item.id === destId)
   if (root === undefined) return errorResponse('repo-dest-unwritable')

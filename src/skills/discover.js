@@ -6,8 +6,8 @@
  * roots (same names and same precedence) so the panel can list them too.
  *
  * Roots, in DSH's order (first wins for a duplicate name):
- *   project-dsh    <projectRoot>/.dsh/skills
- *   project-agents <projectRoot>/.agents/skills
+ *   project-dsh    <workspacePath>/.dsh/skills
+ *   project-agents <workspacePath>/.agents/skills
  *   user-dsh       <dshHome>/skills
  *   user-agents    <agentsHome>/skills
  *

@@ -128,7 +128,7 @@ export function registerGovernanceProvider(ctx, { snapshot, log }) {
  * 本注册器另外保存 `/registerProvider` 的 disposer（`ctx.inject` 的返回 fiber），显式释放：
  * 重复事件、agent disposed、插件卸载三条路径都必须能收干净，否则热重载会撞「provider 重名」。
  */
-export function createGovernanceRegistrar({ snapshot, log = null } = {}) {
+export function createGovernanceRegistrar({ snapshot, snapshotForAgent = null, log = null } = {}) {
   /** 每个作用域一条注册记录；键是 agent 对象（root 不走这里，见 `trackRoot`）。 */
   const scopes = new Map()
   /** 所有已安装 provider 的 `invalidate`，面板改策略后要全部清一遍。 */
@@ -176,7 +176,10 @@ export function createGovernanceRegistrar({ snapshot, log = null } = {}) {
     const install = (scopedCtx) => {
       // 释放已经发生过（agent disposed / 插件卸载）时，迟到的注入回调不能再注册。
       if (record.disposed) return
-      const provider = registerGovernanceProvider(scopedCtx, { snapshot, log })
+      const scopedSnapshot = typeof snapshotForAgent === 'function'
+        ? () => snapshotForAgent(key)
+        : snapshot
+      const provider = registerGovernanceProvider(scopedCtx, { snapshot: scopedSnapshot, log })
       record.provider = provider
       remember(provider)
     }

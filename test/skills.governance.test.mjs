@@ -74,6 +74,24 @@ test('governedSkills：扫出两个来源的技能，默认全部启用', async 
   assert.equal(snapshot.statePath, managerStatePath(homes.dshHome))
 })
 
+test('governedSkills：同一 Git checkout 下按每个 Workspace path 独立扫描项目技能', async () => {
+  const homes = await makeHomes()
+  const checkout = join(homes.base, 'repo')
+  const bbbbbbb = join(checkout, 'data', 'workspaces', 'bbbbbbb')
+  const attack = join(checkout, 'data', 'workspaces', 'attack')
+  await mkdir(join(checkout, '.git'), { recursive: true })
+  await makeSkill(join(bbbbbbb, '.dsh', 'skills'), 'bbbbbbb-only')
+  await makeSkill(join(attack, '.agents', 'skills'), 'attack-only')
+
+  const snapshot = await scan(homes, { projectRoots: [bbbbbbb, attack] })
+  const bSkill = snapshot.skills.find((skill) => skill.name === 'bbbbbbb-only')
+  const attackSkill = snapshot.skills.find((skill) => skill.name === 'attack-only')
+
+  assert.equal(bSkill?.scope, bbbbbbb)
+  assert.equal(attackSkill?.scope, attack)
+  assert.equal(snapshot.skills.some((skill) => skill.scope === checkout), false)
+})
+
 test('停用来源：该来源下所有技能都变成不可用，别的来源不受影响', async () => {
   const homes = await makeHomes()
   await makeSkill(join(homes.dshHome, 'skills'), 'alpha')

@@ -40,6 +40,14 @@ test('scopeRoot：id 选根 —— agents 走 DSH_AGENTS_HOME，项目级两个�
   }
 })
 
+test('scopeRoot：不向上寻找 Git 根，嵌套 Workspace 使用自己的项目技能目录', () => {
+  const checkout = mkdtempSync(join(tmpdir(), 'smp-git-checkout-'))
+  const workspace = join(checkout, 'data', 'workspaces', 'bbbbbbb')
+  mkdirSync(join(checkout, '.git'), { recursive: true })
+  mkdirSync(workspace, { recursive: true })
+  assert.equal(scopeRoot(workspace), join(workspace, '.dsh', 'skills'))
+})
+
 
 /*
  * `reconcileSkills` 在 0.5.32 被删除：它从未被调用，却会按状态文件里的**任意 dirname**
