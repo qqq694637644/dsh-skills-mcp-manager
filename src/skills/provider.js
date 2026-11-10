@@ -24,36 +24,50 @@ export const PROVIDER_NAME = 'dsh-skills-mcp-manager'
  * `snapshot()` is called on every `list()`: DSH caches the catalog itself and asks us to
  * `invalidate()` after a write, so recomputing here is both cheap and always correct.
  */
-export function createGovernanceProvider({ snapshot, log = null }) {
+export function createGovernanceProvider({ snapshot, scope = null, log = null }) {
   /**
-   * 上一次成功列出的结果。
+   * 上一次成功读到的**未按 Workspace 过滤**快照。
    *
-   * `snapshot()` 会读 `state.json`，而读取可能因瞬时占用（EBUSY/EACCES）失败。那时代理
-   * **不能**把异常抛给 DSH：`skills.list()` 是全局调用，抛错会让整个 profile 的技能目录
-   * 一起不可用（连不归本插件管的技能也读不出来）。退回上一次成功的结果，最坏只是策略状态
-   * 慢一拍，面板自己的路由会把真实错误显示出来。
+   * 同一个 provider 的 Workspace 可能随 SessionId 注册表变化。若缓存的是过滤后的列表，
+   * 快照读取失败时就可能把上一个 Workspace 的技能回退给当前 Workspace。
+   * 因此只缓存完整快照，每次 list 都按当前 scope 重新过滤。
    */
-  let lastGood = []
-  /**
-   * 清掉"上一次结果"。
-   *
-   * 策略被改过（`invalidate()`）之后不能再拿旧结果兜底：否则「刚点完停用 → 下一次快照读失败」
-   * 会把停用前的策略当成答案返回，模型照样能调用 —— 失败方向变成 fail-open，与整个治理的目标
-   * 相反。清空后失败时返回空列表（本插件独家来源暂时不可见，原生来源不受影响）。
-   */
-  const resetCache = () => { lastGood = [] }
+  let lastGoodSkills = []
+  /** 策略变更后清空旧快照；失败时返回空列表，避免继续使用过期的停用状态。 */
+  const resetCache = () => { lastGoodSkills = [] }
   return {
     name: PROVIDER_NAME,
     resetCache,
     async list() {
       let skills = null
       try {
-        skills = (await snapshot()).skills
+        const snapshotSkills = (await snapshot())?.skills
+        skills = Array.isArray(snapshotSkills) ? snapshotSkills : null
       } catch (error) {
-        if (typeof log === 'function') log(`技能快照读取失败，沿用上一次结果：${String(error?.message ?? error)}`)
-        return lastGood
+        if (typeof log === 'function') log(`技能快照读取失败，沿用上一次完整快照：${String(error?.message ?? error)}`)
       }
-      lastGood = skills.map((skill) => ({
+      if (skills === null) skills = lastGoodSkills
+      else lastGoodSkills = skills
+
+      // scope 可以是固定的 'global'，也可以是每次读取时重新求值的 Workspace path。
+      // 空 Workspace 不放行任何项目技能；没有配置 scope 时保留旧 API 的全量行为。
+      let activeScope = scope
+      try {
+        if (typeof activeScope === 'function') activeScope = activeScope()
+      } catch (error) {
+        if (typeof log === 'function') log(`技能 Workspace 作用域读取失败：${String(error?.message ?? error)}`)
+        activeScope = ''
+      }
+      if (activeScope === 'global') {
+        skills = skills.filter((skill) => skill.scope === 'global')
+      } else if (typeof activeScope === 'string') {
+        skills = activeScope === '' ? [] : skills.filter((skill) => skill.scope === activeScope)
+      } else if (scope !== null && scope !== undefined) {
+        // A configured scope that cannot be resolved must fail closed, never expose every Workspace.
+        skills = []
+      }
+
+      return skills.map((skill) => ({
         name: skill.name,
         description: skill.description === '' ? `技能：${skill.name}` : skill.description,
         invocation: {
@@ -66,7 +80,6 @@ export function createGovernanceProvider({ snapshot, log = null }) {
         rank: skill.rank,
         locator: skill.path,
       }))
-      return lastGood
     },
     async get(candidate) {
       const path = String(candidate?.locator ?? candidate?.path ?? '')
@@ -75,14 +88,13 @@ export function createGovernanceProvider({ snapshot, log = null }) {
     },
   }
 }
-
 /**
  * Register the provider on a context that already has `skills` injected.
  *
  * @returns `{ installed, invalidate, dispose }` — `invalidate()` 在治理状态变化后必须调用，
  *   否则 DSH 的目录缓存会一直返回旧的 invocation 策略（表现为「停用了但还能用」）。
  */
-export function registerGovernanceProvider(ctx, { snapshot, log }) {
+export function registerGovernanceProvider(ctx, { snapshot, scope = null, log }) {
   const noop = { installed: false, invalidate: () => {}, dispose: () => {} }
   const skills = ctx?.skills
   if (skills === undefined || typeof skills.registerProvider !== 'function') {
@@ -91,7 +103,7 @@ export function registerGovernanceProvider(ctx, { snapshot, log }) {
   }
   let invalidate = () => {}
   const dispose = skills.registerProvider((control) => {
-    const provider = createGovernanceProvider({ snapshot, log })
+    const provider = createGovernanceProvider({ snapshot, scope, log })
     const upstream = typeof control?.invalidate === 'function' ? control.invalidate : () => {}
     invalidate = () => { provider.resetCache(); upstream() }
     return provider
@@ -128,7 +140,7 @@ export function registerGovernanceProvider(ctx, { snapshot, log }) {
  * 本注册器另外保存 `/registerProvider` 的 disposer（`ctx.inject` 的返回 fiber），显式释放：
  * 重复事件、agent disposed、插件卸载三条路径都必须能收干净，否则热重载会撞「provider 重名」。
  */
-export function createGovernanceRegistrar({ snapshot, snapshotForAgent = null, log = null } = {}) {
+export function createGovernanceRegistrar({ snapshot, scopeForAgent = null, log = null } = {}) {
   /** 每个作用域一条注册记录；键是 agent 对象（root 不走这里，见 `trackRoot`）。 */
   const scopes = new Map()
   /** 所有已安装 provider 的 `invalidate`，面板改策略后要全部清一遍。 */
@@ -176,10 +188,8 @@ export function createGovernanceRegistrar({ snapshot, snapshotForAgent = null, l
     const install = (scopedCtx) => {
       // 释放已经发生过（agent disposed / 插件卸载）时，迟到的注入回调不能再注册。
       if (record.disposed) return
-      const scopedSnapshot = typeof snapshotForAgent === 'function'
-        ? () => snapshotForAgent(key)
-        : snapshot
-      const provider = registerGovernanceProvider(scopedCtx, { snapshot: scopedSnapshot, log })
+      const scopedScope = typeof scopeForAgent === 'function' ? () => scopeForAgent(key) : null
+      const provider = registerGovernanceProvider(scopedCtx, { snapshot, scope: scopedScope, log })
       record.provider = provider
       remember(provider)
     }

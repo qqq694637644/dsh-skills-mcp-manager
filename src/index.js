@@ -1479,21 +1479,6 @@ export function apply(ctx, config) {
     cachedAt = now
     return fresh
   }
-  const globalGovernanceSnapshot = async () => {
-    const snapshot = await governanceSnapshot()
-    return { ...snapshot, skills: snapshot.skills.filter((skill) => skill.scope === 'global') }
-  }
-  const governanceSnapshotForAgent = async (agent) => {
-    const snapshot = await governanceSnapshot()
-    const workspacePath = currentWorkspacePath(configuredWorkspaces(ctx), [agent])
-    return {
-      ...snapshot,
-      skills: workspacePath === ''
-        ? []
-        : snapshot.skills.filter((skill) => skill.scope === workspacePath),
-    }
-  }
-
   /**
    * 技能治理 provider 的**分作用域**注册器（root + 每个 agent 的 scope）。
    *
@@ -1504,7 +1489,7 @@ export function apply(ctx, config) {
    */
   const governance = createGovernanceRegistrar({
     snapshot: governanceSnapshot,
-    snapshotForAgent: governanceSnapshotForAgent,
+    scopeForAgent: (agent) => currentWorkspacePath(configuredWorkspaces(ctx), [agent]),
     log: (message) => ctx.logger.warn('dsh-skills-mcp-manager: %s', message),
   })
 
@@ -1587,6 +1572,8 @@ export function apply(ctx, config) {
     if (agent === undefined || agent === null || agents.has(agent)) return
     const entry = { cwd: workingDirectoryOf(agent), mounted: new Map() }
     agents.set(agent, entry)
+    // Agent 增删会改变当前参与治理的 Workspace 集合；不要让 1 秒快照 memo 延迟看到新集合。
+    invalidateSnapshotCache()
     // 技能治理：同一份 provider 也要进这个 agent 自己的 scope，否则 rank−1 的 shadow 候选
     // 只待在 global 层，会被 preset 层同名条目按「层最近者胜」压掉（停用不生效的根因）。
     governance.attachAgent(agent)
@@ -1598,6 +1585,7 @@ export function apply(ctx, config) {
     if (entry === undefined) return
     for (const mounted of entry.mounted.values()) unmount(mounted.stops)
     agents.delete(agent)
+    invalidateSnapshotCache()
     governance.detachAgent(agent)
   }
 
@@ -1929,7 +1917,8 @@ export function apply(ctx, config) {
     const provider = registerGovernanceProvider(skillsCtx, {
       // 快照失败时留一行日志：代理会沿用上一次结果、不抛给 DSH —— 但用户得能查到原因。
       log: (message) => ctx.logger.warn('dsh-skills-mcp-manager: %s', message),
-      snapshot: globalGovernanceSnapshot,
+      snapshot: governanceSnapshot,
+      scope: 'global',
     })
     governance.trackRoot(provider)
     governanceProviderInstalled = provider.installed

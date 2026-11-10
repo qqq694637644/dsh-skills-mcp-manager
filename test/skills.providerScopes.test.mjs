@@ -102,7 +102,7 @@ const disabledSnapshot = () => ({
   ],
 })
 
-function harness({ snapshot = disabledSnapshot, snapshotForAgent = null } = {}) {
+function harness({ snapshot = disabledSnapshot, scopeForAgent = null } = {}) {
   const skills = fakeSkills()
   const fixture = {
     skillsService: skills.service,
@@ -113,7 +113,7 @@ function harness({ snapshot = disabledSnapshot, snapshotForAgent = null } = {}) 
   }
   const registrar = createGovernanceRegistrar({
     snapshot,
-    snapshotForAgent,
+    scopeForAgent,
     log: (message) => fixture.logs.push(message),
   })
   return { registrar, fixture }
@@ -150,7 +150,7 @@ test('attachAgent：每个 agent 都在**自己的 ctx** 上注册，且候选�
   assert.equal(enabled.rank, policyRank('claude'))
 })
 
-test('snapshotForAgent：每个 Agent 只收到自己 Workspace 的项目技能', async () => {
+test('scopeForAgent：每个 Agent 只收到自己 Workspace 的项目技能', async () => {
   const all = () => ({
     skills: [
       { name: 'global-skill', description: '全局', source: 'user-dsh', rank: policyRank('user-dsh'), enabled: true, path: '/global/SKILL.md', scope: 'global' },
@@ -158,14 +158,8 @@ test('snapshotForAgent：每个 Agent 只收到自己 Workspace 的项目技能'
       { name: 'attack-skill', description: 'attack', source: 'project-dsh', rank: policyRank('project-dsh'), enabled: true, path: '/attack/SKILL.md', scope: '/workspaces/attack' },
     ],
   })
-  const snapshotForAgent = async (agent) => {
-    const snapshot = all()
-    return {
-      ...snapshot,
-      skills: snapshot.skills.filter((skill) => skill.scope === agent.workspacePath),
-    }
-  }
-  const { registrar, fixture } = harness({ snapshot: all, snapshotForAgent })
+  const scopeForAgent = (agent) => agent.workspacePath
+  const { registrar, fixture } = harness({ snapshot: all, scopeForAgent })
   const bbbbbbb = makeAgent(fixture)
   const attack = makeAgent(fixture)
   bbbbbbb.workspacePath = '/workspaces/bbbbbbb'
@@ -316,8 +310,44 @@ test('index.js 的接线没有丢（静态检查三处生命周期调用）', as
   assert.match(source, /governance\.trackRoot\(provider\)/, 'root 那份仍要注册（global 层兜底）')
   assert.match(source, /governance\.invalidate\(\)/, '面板改策略后必须让所有层失效')
   assert.match(source, /governance\.disposeAll\(\)/, '插件卸载时必须释放所有 agent 注册')
-  assert.match(source, /snapshotForAgent:\s*governanceSnapshotForAgent/, 'agent provider 必须按所属 Workspace 过滤')
-  assert.match(source, /snapshot:\s*globalGovernanceSnapshot/, 'root provider 只提供全局技能')
+  assert.match(source, /scopeForAgent:\s*\(agent\)\s*=>\s*currentWorkspacePath\(configuredWorkspaces\(ctx\),\s*\[agent\]\)/, 'agent provider 必须按所属 DSH Workspace 过滤')
+  assert.match(source, /snapshot:\s*governanceSnapshot,[\s\S]*?scope:\s*'global'/, 'root provider 使用完整快照并只提供全局技能')
   assert.match(source, /currentWorkspacePath\(configuredWorkspaces\(ctx\), \[agent\]\)/, '每个 agent 用自己的 Workspace membership')
   assert.match(source, /governanceSnapshot/, '各作用域共用同一份底层扫描/TTL 缓存')
+})
+test('快照失败回退仍按当前 Workspace 过滤，不会把上一个 Workspace 的技能泄漏过来', async () => {
+  let activeWorkspace = '/workspaces/bbbbbbb'
+  let failSnapshot = false
+  const all = async () => {
+    if (failSnapshot) throw new Error('temporary disk read failure')
+    return {
+      skills: [
+        { name: 'global-skill', description: '全局', source: 'user-dsh', rank: policyRank('user-dsh'), enabled: true, path: '/global/SKILL.md', scope: 'global' },
+        { name: 'bbbbbbb-skill', description: 'bbbbbbb', source: 'project-dsh', rank: policyRank('project-dsh'), enabled: true, path: '/bbbbbbb/SKILL.md', scope: '/workspaces/bbbbbbb' },
+        { name: 'attack-skill', description: 'attack', source: 'project-dsh', rank: policyRank('project-dsh'), enabled: true, path: '/attack/SKILL.md', scope: '/workspaces/attack' },
+      ],
+    }
+  }
+  const provider = createGovernanceProvider({ snapshot: all, scope: () => activeWorkspace })
+  assert.deepEqual((await provider.list()).map((skill) => skill.name), ['bbbbbbb-skill'])
+
+  // Same live provider, but the Workspace registry now assigns this agent elsewhere.
+  // A failed refresh must reuse the unfiltered snapshot and apply the new scope afterwards.
+  activeWorkspace = '/workspaces/attack'
+  failSnapshot = true
+  assert.deepEqual((await provider.list()).map((skill) => skill.name), ['attack-skill'])
+})
+
+test('agent 增删都让治理快照 memo 失效', async () => {
+  const source = await readFile(new URL('../src/index.js', import.meta.url), 'utf8')
+  const attach = source.match(/const attachAgent = \(agent\) => \{([\s\S]*?)\n  \}/)?.[1] ?? ''
+  const detach = source.match(/const detachAgent = \(agent\) => \{([\s\S]*?)\n  \}/)?.[1] ?? ''
+  assert.match(attach, /agents\.set\(agent, entry\)[\s\S]*invalidateSnapshotCache\(\)/,
+    '新 agent 加入后必须清除 1 秒快照 memo')
+  assert.match(detach, /agents\.delete\(agent\)[\s\S]*invalidateSnapshotCache\(\)/,
+    'agent 移除后必须清除 1 秒快照 memo')
+})
+test('配置了动态 Workspace 作用域但无法解析时必须 fail-closed', async () => {
+  const provider = createGovernanceProvider({ snapshot: disabledSnapshot, scope: () => undefined })
+  assert.deepEqual(await provider.list(), [])
 })

@@ -1,4 +1,9 @@
 # Changelog
+## Unreleased — 同步上游快照生命周期修复（保留 DSH Workspace 作用域）
+
+- Agent 创建/移除后立即清除 1 秒治理快照 memo，避免工作区集合变化后继续使用旧快照。
+- Provider 缓存未按 Workspace 过滤的完整快照；每次列举时再按当前 SessionId 对应的 DSH Workspace path 过滤。快照读取失败时也会重新应用当前 Workspace，避免把旧 Workspace 的技能回退给新 Workspace。
+- 不采用上游最近 `.git` 祖先作为项目技能根的实现；项目技能仍以 DSH Workspace 注册表路径为唯一作用域。
 
 ## 0.6.6 — 项目技能严格锁定 DSH Workspace + 扫描诊断
 
